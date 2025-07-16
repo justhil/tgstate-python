@@ -14,20 +14,24 @@ router = APIRouter()
 
 @router.post("/api/upload")
 async def upload_file(
+    request: Request, # 添加 Request 依赖
     file: UploadFile = File(...),
-    key: Optional[str] = Form(None), # 从表单中获取 key
+    key: Optional[str] = Form(None),
     settings: Settings = Depends(get_settings),
     telegram_service: TelegramService = Depends(get_telegram_service),
-    x_api_key: Optional[str] = Header(None) # 从请求头中获取 x-api-key
+    x_api_key: Optional[str] = Header(None)
 ):
     """
     处理文件上传。
-    如果配置了 PICGO_API_KEY，则需要进行验证。
-    此端点现在接受来自 x-api-key (Header) 或 key (Form) 的 API 密钥。
+    - 如果用户已通过 Web UI 登录 (有会话)，则跳过 API 密钥验证。
+    - 否则，如果配置了 PICGO_API_KEY，则需要进行验证。
+    - 此端点接受来自 x-api-key (Header) 或 key (Form) 的 API 密钥。
     """
-    # API 密钥验证
-    if settings.PICGO_API_KEY:
-        # 优先使用请求头中的密钥，然后回退到表单中的密钥
+    # 检查用户是否通过会话登录
+    is_logged_in_via_session = request.session.get("logged_in", False)
+
+    # 如果设置了 PICGO_API_KEY 且用户未通过会话登录，则验证 API 密钥
+    if settings.PICGO_API_KEY and not is_logged_in_via_session:
         submitted_key = x_api_key or key
         if settings.PICGO_API_KEY != submitted_key:
             raise HTTPException(status_code=401, detail="无效的 API 密钥")
