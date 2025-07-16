@@ -11,6 +11,7 @@ templates = Jinja2Templates(directory="app/templates")
 async def main_page(request: Request):
     """
     提供主页，展示文件上传区域和所有文件的列表。
+    权限验证已移至全局中间件。
     """
     files = database.get_all_files()
     return templates.TemplateResponse("index.html", {"request": request, "files": files})
@@ -20,6 +21,7 @@ async def main_page(request: Request):
 async def settings_page(request: Request):
     """
     提供设置页面，用于更改密码。
+    权限验证已移至全局中间件。
     """
     return templates.TemplateResponse("settings.html", {"request": request})
 
@@ -47,6 +49,7 @@ async def submit_password(password: str = Form(...)):
 async def image_hosting_page(request: Request):
     """
     提供图床页面，并展示所有已上传的图片。
+    权限验证已移至全局中间件。
     """
     files = database.get_all_files()
     # 定义图片文件后缀

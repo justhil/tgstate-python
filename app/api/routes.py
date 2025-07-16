@@ -35,25 +35,54 @@ async def upload_file(
     active_password = get_active_password()
     submitted_key = x_api_key or key
 
-    # 根据请求是否包含 API key 来决定验证路径
-    if submitted_key:
-        # 这是 API 路径，只验证 API Key
-        if not picgo_api_key:
-            raise HTTPException(status_code=401, detail="服务器未配置API密钥，拒绝访问")
-        if picgo_api_key == submitted_key:
-            pass # API 验证通过
+    # 修正后的验证逻辑
+    # 通过 'Referer' 头来区分网页端和 API 端的请求
+    is_web_request = "referer" in request.headers
+
+    auth_ok = False
+    error_detail = "验证失败"
+
+    # 1. 两个密码都【没有】设置：完全开放
+    if not active_password and not picgo_api_key:
+        auth_ok = True
+
+    # 2. 只设置了【Picogo密码】：网页开放，API需验证
+    elif picgo_api_key and not active_password:
+        if is_web_request:
+            auth_ok = True  # 网页请求无条件允许
         else:
-            raise HTTPException(status_code=401, detail="无效的 API 密钥")
-    else:
-        # 这是网页路径，只验证网页密码
-        if not active_password:
-            pass # 网页无需密码，验证通过
-        else:
+            if picgo_api_key == submitted_key:
+                auth_ok = True  # API 请求验证密钥
+            else:
+                error_detail = "无效的 API 密钥"
+
+    # 3. 只设置了【登录密码】：网页需登录，API开放
+    elif not picgo_api_key and active_password:
+        if is_web_request:
             session_password = request.cookies.get("password")
             if active_password == session_password:
-                pass # 网页密码验证通过
+                auth_ok = True  # 网页请求验证会话
             else:
-                raise HTTPException(status_code=401, detail="需要网页登录")
+                error_detail = "需要网页登录"
+        else:
+            auth_ok = True  # API 请求无条件允许
+
+    # 4. 两个密码都【设置了】：网页和 API 都需要验证
+    elif active_password and picgo_api_key:
+        if is_web_request:
+            session_password = request.cookies.get("password")
+            if active_password == session_password:
+                auth_ok = True
+            else:
+                error_detail = "需要网页登录"
+        else:
+            if picgo_api_key == submitted_key:
+                auth_ok = True
+            else:
+                error_detail = "无效的 API 密钥"
+
+    if not auth_ok:
+        raise HTTPException(status_code=401, detail=error_detail)
     temp_file_path = None
     try:
         # 使用 tempfile 创建一个安全的临时文件
