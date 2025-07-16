@@ -26,24 +26,32 @@ async def upload_file(
     此端点现在支持两种验证方式：
     1. API 密钥：通过 x-api-key (Header) 或 key (Form) 提供。
     2. Cookie 验证：通过检查已登录用户的会话 cookie。
+    如果未设置任何密码，则允许匿名上传。
     """
-    # 验证逻辑
+    # 获取配置的密码
+    picgo_api_key = settings.PICGO_API_KEY
+    active_password = get_active_password()
     submitted_key = x_api_key or key
+
+    # 根据请求是否包含 API key 来决定验证路径
     if submitted_key:
-        # 场景1: 使用 API 密钥验证 (适用于 PicGo 等客户端)
-        if settings.PICGO_API_KEY and settings.PICGO_API_KEY == submitted_key:
-            pass # 验证通过
+        # 这是 API 路径，只验证 API Key
+        if not picgo_api_key:
+            raise HTTPException(status_code=401, detail="服务器未配置API密钥，拒绝访问")
+        if picgo_api_key == submitted_key:
+            pass # API 验证通过
         else:
             raise HTTPException(status_code=401, detail="无效的 API 密钥")
     else:
-        # 场景2: 使用 Cookie 验证 (适用于 Web 前端)
-        active_password = get_active_password()
-        session_password = request.cookies.get("password")
-        if active_password and session_password == active_password:
-            pass # 验证通过
+        # 这是网页路径，只验证网页密码
+        if not active_password:
+            pass # 网页无需密码，验证通过
         else:
-            # 如果两种方式都失败，则拒绝访问
-            raise HTTPException(status_code=401, detail="未经授权的访问")
+            session_password = request.cookies.get("password")
+            if active_password == session_password:
+                pass # 网页密码验证通过
+            else:
+                raise HTTPException(status_code=401, detail="需要网页登录")
     temp_file_path = None
     try:
         # 使用 tempfile 创建一个安全的临时文件
