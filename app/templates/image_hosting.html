@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}图床 - tgState V2{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Image Hosting</h1>
+    <p class="subtitle">Upload your images and get shareable links.</p>
+    
+    <div class="upload-area-image" id="upload-area">
+        <div class="upload-icon">
+            <i class="fas fa-cloud-upload-alt"></i>
+        </div>
+        <p>Drag & Drop your images here or</p>
+        <button class="browse-btn" id="browse-btn">Browse Files</button>
+        <input type="file" id="file-input" hidden multiple accept="image/*">
+    </div>
+    
+    <div class="progress-area" id="progress-area"></div>
+    <div class="uploaded-area" id="uploaded-area"></div>
+
+   <div class="file-list-container-disk">
+        <h2 class="gallery-title">
+            <i class="fas fa-images"></i> My Gallery
+        </h2>
+
+        {% if images %}
+        <div class="controls-container">
+            <div class="batch-actions-container">
+                <button id="batch-delete-btn" class="batch-action-btn delete" disabled><i class="fas fa-trash-alt"></i> Batch Delete</button>
+                <button id="copy-links-btn" class="batch-action-btn copy" disabled><i class="fas fa-copy"></i> Copy Links</button>
+                <span id="selection-counter" class="selection-counter"></span>
+            </div>
+            <div class="link-format-selector">
+                <span class="format-label">Link Format:</span>
+                <div class="format-options">
+                    <button class="format-option active" data-format="url">URL</button>
+                    <button class="format-option" data-format="markdown">Markdown</button>
+                    <button class="format-option" data-format="html">HTML</button>
+                    <button class="format-option" data-format="ubb">UBB</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="image-list-header">
+            <div class="file-header-checkbox"><input type="checkbox" id="select-all-checkbox" title="Select All"></div>
+            <div class="file-header-name">File</div>
+            <div class="file-header-size">Size</div>
+            <div class="file-header-date">Upload Date</div>
+            <div class="file-header-actions">Actions</div>
+        </div>
+        <div class="image-list-body">
+            {% for image in images %}
+            <div class="image-list-item" id="file-item-{{ image.file_id.replace(':', '-') }}" data-file-id="{{ image.file_id }}" data-file-url="/d/{{ image.file_id }}" data-filename="{{ image.filename }}">
+                <div class="file-info-checkbox">
+                    <input type="checkbox" class="file-checkbox" data-file-id="{{ image.file_id }}" data-file-link="/d/{{ image.file_id }}">
+                </div>
+                <div class="file-info-name">
+                    <img src="/d/{{ image.file_id }}" alt="{{ image.filename }}" class="list-thumbnail" loading="lazy" onclick="showImageModal('/d/{{ image.file_id }}', '{{ image.filename }}')">
+                    <span class="file-name" title="{{ image.filename }}">{{ image.filename }}</span>
+                </div>
+                <div class="file-info-size">{{ "%.2f KB"|format(image.size / 1024) }}</div>
+                <div class="file-info-date">{{ image.upload_date }}</div>
+                <div class="file-info-actions">
+                    <button class="action-btn copy-btn" title="Copy URL" data-url="{{ request.url.scheme }}://{{ request.url.netloc }}/d/{{ image.file_id }}">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <a href="/d/{{ image.file_id }}" class="action-btn download-btn" title="Download" download>
+                        <i class="fas fa-download"></i>
+                    </a>
+                    <button class="action-btn delete-btn" title="Delete" onclick="deleteFile('{{ image.file_id }}')">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-list">
+            <i class="fas fa-image"></i>
+            <p>Your gallery is empty. Upload some images to get started!</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div id="image-modal" class="modal">
+   <span class="close-modal" onclick="closeImageModal()">&times;</span>
+   <img class="modal-content" id="modal-image">
+   <div id="modal-caption"></div>
+</div>
+
+
+<script src="{{ url_for('static', path='/js/main.js') }}?v=2.3"></script>
+{% endblock %}

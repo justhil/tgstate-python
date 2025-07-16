@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}主页 - tgState V2{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Compact Upload Area -->
+    <div class="upload-container">
+        <div class="upload-area-compact" id="upload-area">
+            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+            <p>Drag & Drop files or <span>Browse</span></p>
+            <input type="file" id="file-input" hidden multiple>
+        </div>
+        <div class="progress-area" id="progress-area"></div>
+        <div class="uploaded-area" id="uploaded-area"></div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="batch-actions-container">
+        <button id="batch-delete-btn" class="batch-action-btn delete" disabled><i class="fas fa-trash-alt"></i> 批量删除</button>
+        <button id="copy-links-btn" class="batch-action-btn copy" disabled><i class="fas fa-copy"></i> 复制链接</button>
+        <span id="selection-counter" class="selection-counter"></span>
+    </div>
+
+    <!-- Modern File List -->
+    <div class="file-list-container-disk">
+        <div class="file-list-header">
+            <div class="file-header-checkbox"><input type="checkbox" id="select-all-checkbox" title="Select all files"></div>
+            <div class="file-header-name">Name</div>
+            <div class="file-header-size">Size</div>
+            <div class="file-header-date">Upload Date</div>
+            <div class="file-header-actions">Actions</div>
+        </div>
+        <div class="file-list-disk" id="file-list-disk">
+            {% if files %}
+                {% for file in files %}
+                <div class="file-item-disk" id="file-item-{{ file.file_id.replace(':', '-') }}" data-file-id="{{ file.file_id }}" data-file-url="/d/{{ file.file_id }}" data-filename="{{ file.filename }}">
+                    <div class="file-info-checkbox">
+                        <input type="checkbox" class="file-checkbox" data-file-id="{{ file.file_id }}">
+                    </div>
+                    <div class="file-info-disk">
+                        <i class="fas fa-file-alt file-icon"></i>
+                        <span class="file-name" title="{{ file.filename }}">{{ file.filename }}</span>
+                    </div>
+                    <div class="file-size">{{ "%.2f" | format(file.filesize / (1024*1024)) }} MB</div>
+                    <div class="file-date">{{ file.upload_date.split(' ')[0] }}</div>
+                    <div class="file-actions-disk">
+                        <a href="/d/{{ file.file_id }}" class="action-btn download-btn" title="Download"><i class="fas fa-download"></i></a>
+                        <button class="action-btn copy-link-btn" title="Copy Link" onclick="copyLink('/d/{{ file.file_id }}')"><i class="fas fa-link"></i></button>
+                        <button class="action-btn delete-btn" title="Delete" onclick="deleteFile('{{ file.file_id }}')"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-list">
+                    <i class="fas fa-folder-open"></i>
+                    <p>No files here. Try uploading something!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<script src="{{ url_for('static', path='/js/main.js') }}?v=2.3"></script>
+{% endblock %}

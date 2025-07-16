@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置 - tgState</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>设置</h1>
+            <nav>
+                <a href="/">主页</a>
+                <a href="/image_hosting">图床</a>
+            </nav>
+        </header>
+        <main>
+            <div class="settings-form">
+                <h2>设置访问密码</h2>
+                <p>在这里设置一个新的全局访问密码。如果留空，则密码保护将依赖于环境变量的设置。</p>
+                <form id="password-form">
+                    <div class="form-group">
+                        <label for="password">新密码:</label>
+                        <input type="password" id="password" name="password" placeholder="输入新密码" required>
+                    </div>
+                    <button type="submit">保存密码</button>
+                </form>
+                <p id="message" class="message"></p>
+            </div>
+        </main>
+    </div>
+    <script>
+        document.getElementById('password-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const password = document.getElementById('password').value;
+            const messageEl = document.getElementById('message');
+            
+            try {
+                const response = await fetch('/api/set-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password: password }),
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    messageEl.textContent = '密码已成功更新！';
+                    messageEl.className = 'message success';
+                } else {
+                    messageEl.textContent = '错误: ' + (result.detail || '未知错误');
+                    messageEl.className = 'message error';
+                }
+            } catch (error) {
+                messageEl.textContent = '请求失败: ' + error.message;
+                messageEl.className = 'message error';
+            }
+        });
+    </script>
+</body>
+</html>

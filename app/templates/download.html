@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Download {{ file.filename }}{% endblock %}
+
+{% block content %}
+<style>
+    .share-container {
+        background-color: var(--container-bg);
+        padding: 40px 50px;
+        border-radius: 20px;
+        box-shadow: 0 15px 35px var(--shadow-color);
+        text-align: center;
+        width: 95%;
+        max-width: 800px;
+        border: 1px solid var(--border-color);
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    .share-header {
+        margin-bottom: 35px;
+        text-align: left;
+    }
+
+    .share-title {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: var(--text-color);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 8px;
+    }
+
+    .share-title .fa-share-alt {
+        background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .file-meta-info {
+        font-size: 0.95rem;
+        color: var(--text-light);
+    }
+
+    .link-generation-area {
+        text-align: left;
+    }
+
+    .link-group {
+        margin-bottom: 20px;
+    }
+
+    .link-label {
+        display: block;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-color);
+        margin-bottom: 10px;
+    }
+
+    .link-input-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .link-input {
+        flex-grow: 1;
+        padding: 12px 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background-color: #f7fafc;
+        color: var(--text-color);
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.9rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .copy-link-btn {
+        flex-shrink: 0;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .copy-link-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(106, 17, 203, 0.3);
+    }
+    
+    .copy-link-btn.copied {
+        background: var(--success-color);
+    }
+
+    .download-button-container {
+        margin-top: 40px;
+        border-top: 1px solid var(--border-color);
+        padding-top: 30px;
+    }
+
+    .download-btn-large {
+        display: inline-block;
+        padding: 15px 40px;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+        border-radius: 50px;
+        text-decoration: none;
+        transition: all 0.3s ease;
+    }
+
+    .download-btn-large:hover {
+        transform: scale(1.05);
+        box-shadow: 0 8px 25px rgba(106, 17, 203, 0.4);
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+<div class="share-container">
+    <div class="share-header">
+        <h1 class="share-title">
+            <i class="fas fa-share-alt"></i>
+            <span>Share File</span>
+        </h1>
+        <p class="file-meta-info">
+            <strong>File:</strong> {{ file.filename }} | 
+            <strong>Size:</strong> {{ "%.2f" | format(file.filesize / (1024*1024)) }} MB | 
+            <strong>Uploaded:</strong> {{ file.upload_date.split(' ')[0] }}
+        </p>
+    </div>
+
+    <div class="link-generation-area">
+        <!-- Direct Link -->
+        <div class="link-group">
+            <label for="direct-link" class="link-label">Direct Link</label>
+            <div class="link-input-wrapper">
+                <input type="text" id="direct-link" class="link-input" value="{{ file.file_url }}" readonly>
+                <button class="copy-link-btn" data-clipboard-target="#direct-link">
+                    <i class="fas fa-copy"></i>
+                    <span>Copy</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- HTML Code -->
+        <div class="link-group">
+            <label for="html-code" class="link-label">HTML</label>
+            <div class="link-input-wrapper">
+                <input type="text" id="html-code" class="link-input" value="{{ file.html_code }}" readonly>
+                <button class="copy-link-btn" data-clipboard-target="#html-code">
+                    <i class="fas fa-copy"></i>
+                    <span>Copy</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Markdown Code -->
+        <div class="link-group">
+            <label for="markdown-code" class="link-label">Markdown</label>
+            <div class="link-input-wrapper">
+                <input type="text" id="markdown-code" class="link-input" value="{{ file.markdown_code }}" readonly>
+                <button class="copy-link-btn" data-clipboard-target="#markdown-code">
+                    <i class="fas fa-copy"></i>
+                    <span>Copy</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="download-button-container">
+        <a href="{{ file.file_url }}" class="download-btn-large" download>
+            <i class="fas fa-download"></i> Download File
+        </a>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.8/clipboard.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var clipboard = new ClipboardJS('.copy-link-btn');
+
+    clipboard.on('success', function(e) {
+        const originalText = e.trigger.innerHTML;
+        e.trigger.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        e.trigger.classList.add('copied');
+        
+        setTimeout(function() {
+            e.trigger.innerHTML = originalText;
+            e.trigger.classList.remove('copied');
+        }, 2000);
+
+        e.clearSelection();
+    });
+
+    clipboard.on('error', function(e) {
+        console.error('Action:', e.action);
+        console.error('Trigger:', e.trigger);
+        alert('Failed to copy. Please copy manually.');
+    });
+});
+</script>
+{% endblock %}

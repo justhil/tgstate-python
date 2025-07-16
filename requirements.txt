@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+python-telegram-bot
+python-multipart
+jinja2
+pydantic-settings
+sse-starlette

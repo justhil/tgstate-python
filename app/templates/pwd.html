@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Password Required{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-box">
+        <div class="login-icon">
+            <i class="fas fa-shield-alt"></i>
+        </div>
+        <h1>访问受限</h1>
+        <p class="subtitle">此页面需要密码才能访问</p>
+        
+        <form action="/pwd" method="post" class="login-form">
+            <div class="form-group">
+                <i class="fas fa-key form-icon"></i>
+                <input type="password" name="password" id="password" placeholder="请输入密码" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">进入</button>
+            
+            {% if request.query_params.get('error') %}
+            <p class="error-message">密码错误，请重试！</p>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endblock %}
