@@ -9,6 +9,7 @@ from typing import List, Optional
 from fastapi.responses import StreamingResponse, JSONResponse
 from ..core.config import Settings, get_settings, get_active_password
 from ..services.telegram_service import TelegramService, get_telegram_service
+from ..core.http_client import get_http_client # 导入共享客户端
 
 router = APIRouter()
 
@@ -76,7 +77,8 @@ async def upload_file(
 @router.get("/d/{file_id}")
 async def download_file(
     file_id: str, # Note: This can be a composite ID "message_id:file_id"
-    telegram_service: TelegramService = Depends(get_telegram_service)
+    telegram_service: TelegramService = Depends(get_telegram_service),
+    client: httpx.AsyncClient = Depends(get_http_client) # 注入共享客户端
 ):
     """
     处理文件下载。
@@ -92,24 +94,21 @@ async def download_file(
     if not download_url:
         raise HTTPException(status_code=404, detail="文件未找到或下载链接已过期。")
 
-    # 先用范围请求检查文件类型，避免将整个文件读入内存
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        # 请求前 128 字节来检查清单头部
-        range_headers = {"Range": "bytes=0-127"}
-        try:
-            head_resp = await client.get(download_url, headers=range_headers)
-            head_resp.raise_for_status()
-            first_bytes = head_resp.content
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"无法连接到 Telegram 服务器: {e}")
+    # 使用共享客户端进行范围请求，检查文件类型
+    range_headers = {"Range": "bytes=0-127"}
+    try:
+        head_resp = await client.get(download_url, headers=range_headers)
+        head_resp.raise_for_status()
+        first_bytes = head_resp.content
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"无法连接到 Telegram 服务器: {e}")
 
     # 检查是否是清单文件
     if first_bytes.startswith(b'tgstate-blob\n'):
-        # 是清单文件，需要下载整个清单来解析
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            manifest_resp = await client.get(download_url)
-            manifest_resp.raise_for_status()
-            manifest_content = manifest_resp.content
+        # 是清单文件，使用共享客户端下载整个清单来解析
+        manifest_resp = await client.get(download_url)
+        manifest_resp.raise_for_status()
+        manifest_content = manifest_resp.content
         
         lines = manifest_content.decode('utf-8').strip().split('\n')
         original_filename = lines[1]
@@ -119,7 +118,8 @@ async def download_file(
         response_headers = {
             'Content-Disposition': f"attachment; filename*=UTF-8''{filename_encoded}"
         }
-        return StreamingResponse(stream_chunks(chunk_file_ids, telegram_service), headers=response_headers)
+        # 将共享客户端传递给分块流式传输器
+        return StreamingResponse(stream_chunks(chunk_file_ids, telegram_service, client), headers=response_headers)
     else:
         # 是单个文件，直接流式传输
         file_info = database.get_file_by_id(file_id)
@@ -138,11 +138,11 @@ async def download_file(
         }
 
         async def single_file_streamer():
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                async with client.stream("GET", download_url) as resp:
-                    resp.raise_for_status()
-                    async for chunk in resp.aiter_bytes():
-                        yield chunk
+            # 使用共享客户端进行流式传输
+            async with client.stream("GET", download_url) as resp:
+                resp.raise_for_status()
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
         
         return StreamingResponse(single_file_streamer(), headers=response_headers)
 
@@ -293,46 +293,45 @@ async def batch_delete_files(
     }
 
 
-async def stream_chunks(chunk_composite_ids, telegram_service: TelegramService):
-    """一个独立的异步生成器，用于流式传输分块。"""
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        for chunk_id in chunk_composite_ids:
-            try:
-                # 关键变更：从复合ID "message_id:actual_file_id" 中解析出 actual_file_id
-                _, actual_chunk_id = chunk_id.split(':', 1)
-            except (ValueError, IndexError):
-                print(f"警告：无效的分块ID格式 '{chunk_id}'，跳过。")
-                continue
+async def stream_chunks(chunk_composite_ids, telegram_service: TelegramService, client: httpx.AsyncClient):
+    """一个使用共享客户端的异步生成器，用于流式传输分块。"""
+    for chunk_id in chunk_composite_ids:
+        try:
+            # 关键变更：从复合ID "message_id:actual_file_id" 中解析出 actual_file_id
+            _, actual_chunk_id = chunk_id.split(':', 1)
+        except (ValueError, IndexError):
+            print(f"警告：无效的分块ID格式 '{chunk_id}'，跳过。")
+            continue
 
-            # 关键修复：在每次循环时都实时获取最新的下载链接
-            chunk_url = await telegram_service.get_download_url(actual_chunk_id)
-            if not chunk_url:
-                print(f"警告：无法为分块 {actual_chunk_id} 获取下载链接，跳过。")
-                continue
-            
-            print(f"正在流式传输分块 {chunk_id} 从 URL: {chunk_url[:50]}...")
-            try:
-                async with client.stream('GET', chunk_url) as chunk_resp:
-                    # 检查状态码，以防链接过期
-                    if chunk_resp.status_code != 200:
-                        print(f"错误：获取分块 {chunk_id} 失败，状态码: {chunk_resp.status_code}")
-                        # 尝试为这个分块重新获取一次URL
-                        print("正在尝试重新获取URL...")
-                        await asyncio.sleep(1) # 短暂等待
-                        chunk_url = await telegram_service.get_download_url(chunk_id)
-                        if not chunk_url:
-                            print(f"重试失败：无法为分块 {chunk_id} 获取新的URL。")
-                            break
-                        
-                        # 使用新的URL重试
-                        async with client.stream('GET', chunk_url) as retry_resp:
-                            retry_resp.raise_for_status()
-                            async for chunk_data in retry_resp.aiter_bytes():
-                                yield chunk_data
-                    else:
-                        async for chunk_data in chunk_resp.aiter_bytes():
+        # 关键修复：在每次循环时都实时获取最新的下载链接
+        chunk_url = await telegram_service.get_download_url(actual_chunk_id)
+        if not chunk_url:
+            print(f"警告：无法为分块 {actual_chunk_id} 获取下载链接，跳过。")
+            continue
+        
+        print(f"正在流式传输分块 {chunk_id} 从 URL: {chunk_url[:50]}...")
+        try:
+            async with client.stream('GET', chunk_url) as chunk_resp:
+                # 检查状态码，以防链接过期
+                if chunk_resp.status_code != 200:
+                    print(f"错误：获取分块 {chunk_id} 失败，状态码: {chunk_resp.status_code}")
+                    # 尝试为这个分块重新获取一次URL
+                    print("正在尝试重新获取URL...")
+                    await asyncio.sleep(1) # 短暂等待
+                    chunk_url = await telegram_service.get_download_url(actual_chunk_id) # 使用 actual_chunk_id
+                    if not chunk_url:
+                        print(f"重试失败：无法为分块 {chunk_id} 获取新的URL。")
+                        break
+                    
+                    # 使用新的URL重试
+                    async with client.stream('GET', chunk_url) as retry_resp:
+                        retry_resp.raise_for_status()
+                        async for chunk_data in retry_resp.aiter_bytes():
                             yield chunk_data
+                else:
+                    async for chunk_data in chunk_resp.aiter_bytes():
+                        yield chunk_data
 
-            except httpx.RequestError as e:
-                print(f"流式传输分块 {chunk_id} 时出现网络错误: {e}")
-                break
+        except httpx.RequestError as e:
+            print(f"流式传输分块 {chunk_id} 时出现网络错误: {e}")
+            break
