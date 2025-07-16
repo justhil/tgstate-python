@@ -2,7 +2,13 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)[![Framework](https://img.shields.io/badge/Framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-`tgState` 原项目链接[csznet/tgState](https://github.com/csznet/tgState)，使用fastapi重构增加前端网盘页面管理文件，增加前端图床页面方便复制。
+`tgState` 原项目链接[csznet/tgState](https://github.com/csznet/tgState)，使用fastapi重构。
+
+##### 增加前端网盘页面管理文件。
+
+##### 增加前端图床页面方便复制。
+
+##### 增加自动识别群组内文件添加至前端网盘显示。
 
 ## 功能特性
 
@@ -13,6 +19,14 @@
 *   **直接链接**: 为每个上传的文件生成一个可直接分享的链接。
 *   **大文件支持**: 自动处理大文件分块上传。
 *   **密码保护**: 可选的密码保护机制，确保您的 Web 界面安全。
+
+<img src="https://tgstate.justhil.uk/d/405:BQACAgEAAyEGAASW4jjnAAIBlWh3jtFpscjgGmvnebBQ1jsjLNpZAAKWBAACKlfBR27j2SbkVoc1NgQ" alt="image-20250716193647591" style="zoom:50%;" />
+
+<img src="https://tgstate.justhil.uk/d/404:BQACAgEAAyEGAASW4jjnAAIBlGh3jsLuOUt-i7nqNTf111BKZeARAAKVBAACKlfBRwABrCtyRxRtgzYE" alt="image-20250716193632089" style="zoom:50%;" />
+
+
+
+
 
 ##  快速开始
 
@@ -35,7 +49,7 @@ docker run -d \
 
 ### 本地开发与运行
 
-如果您希望在本地直接运行 `tgState`：
+如果您希望在本地环境直接运行 `tgState`：
 
 1. **克隆项目并进入目录**:
 
@@ -85,15 +99,15 @@ docker run -d \
 
 ## 注意密码相关
 
-1. **两个密码都没设置**：
+1. **两个密码都【没有】设置**：
    - **处理方式**：完全开放。
    - **结果**：无论是通过 Picogo/API 还是网页，**均可直接上传**，无需任何凭证。
-2. **只设置了Picogo密码**：
+2. **只设置了【Picogo密码】**：
    - **结果**：来自网页的上传请求会无条件允许。来自 Picogo/API 的请求会验证后允许。
-3. **只设置了登录密码**：
+3. **只设置了【登录密码】**：
    - **结果**：来自网页的上传只有**已登录**的网页用户能上传。来自 Picogo/API 的请求会无条件允许。
 
-##  使用方法
+## 使用方法
 
 1. **访问 Web 界面**: 启动应用后，在浏览器中访问 `http://127.0.0.1:8000` (或您配置的 `BASE_URL`)。
 
@@ -101,20 +115,40 @@ docker run -d \
 
 3. **上传文件**: 在主界面，点击上传区域选择文件，或直接将文件拖拽到上传框中。上传成功后，文件会出现在下方的文件列表中。
 
-4. **获取链接**: 文件列表中的每个文件都会显示其文件名、大小和上传日期。点击文件名即可复制该文件的直接下载链接。
+4. **群组上传**支持转发到群组上传，支持小于20m的文件和照片（tg官方的限制）。
 
-   ## PicGo 配置指南
+5. **获取链接**: 文件列表中的每个文件都会显示其文件名、大小和上传日期。点击文件名即可复制该文件的直接下载链接。
 
-   ### 前置要求
+6. **群组获取链接: **群组中回复文件get获取下载链接
 
-   1. 安装插件web-uploader
+   <img src="https://tgstate.justhil.uk/d/403:BQACAgEAAyEGAASW4jjnAAIBk2h3jqlUijKxyoVfkxABB92NsCJgAAKUBAACKlfBR83_LOTAoXxwNgQ" alt="image-20250716193607595" style="zoom:50%;" />
 
-   ### 核心配置
+## PicGo 配置指南
 
-   1.  **图床配置名**: 随便
-   2.  **api地址**: 填写你的服务提供的上传地址。本地是 `http://<你的服务器IP>:8000/api/upload`。
-   3.  **POST参数名**: `file`。
-   4.  **JSON 参数名**: `url`。
-   5.  **自定义body**：{"key":"PICGO_API_KEY"}（可选推荐）
+### 前置要求
 
-   用 roocode 和 白嫖的心 制作。
+1. 安装插件web-uploader
+
+### 核心配置
+
+1. **图床配置名**: 随便
+
+2. **api地址**: 填写你的服务提供的上传地址。本地是 `http://<你的服务器IP>:8000/api/upload`。
+
+3. **POST参数名**: `file`。
+
+4. **JSON 参数名**: `url`。
+
+5. **自定义请求头**：{"x-api-key": "PICGO_API_KEY"}（可选推荐）(验证方式二选一)
+
+6. **自定义body**：{"key":"PICGO_API_KEY"}（可选推荐）(验证方式二选一)
+
+   ![image-20250716193345387](https://tgstate.justhil.uk/d/402:BQACAgEAAyEGAASW4jjnAAIBkmh3jhuMFmcPm0ITenN3hIr0HXKTAAKTBAACKlfBR1q9b44ed_i_NgQ)
+
+
+
+### 目前缺点
+
+1. 删除文件慢，群组内删除前端不会更新需要手动删除。
+
+用 roocode 和 白嫖的心 制作。****
