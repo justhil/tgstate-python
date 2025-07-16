@@ -7,34 +7,43 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Respons
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.responses import StreamingResponse, JSONResponse
-from ..core.config import Settings, get_settings
+from ..core.config import Settings, get_settings, get_active_password
 from ..services.telegram_service import TelegramService, get_telegram_service
 
 router = APIRouter()
 
 @router.post("/api/upload")
 async def upload_file(
-    request: Request, # 添加 Request 依赖
+    request: Request, # 引入 Request 对象以访问 cookie
     file: UploadFile = File(...),
-    key: Optional[str] = Form(None),
+    key: Optional[str] = Form(None), # 从表单中获取 key
     settings: Settings = Depends(get_settings),
     telegram_service: TelegramService = Depends(get_telegram_service),
-    x_api_key: Optional[str] = Header(None)
+    x_api_key: Optional[str] = Header(None) # 从请求头中获取 x-api-key
 ):
     """
     处理文件上传。
-    - 如果用户已通过 Web UI 登录 (有会话)，则跳过 API 密钥验证。
-    - 否则，如果配置了 PICGO_API_KEY，则需要进行验证。
-    - 此端点接受来自 x-api-key (Header) 或 key (Form) 的 API 密钥。
+    此端点现在支持两种验证方式：
+    1. API 密钥：通过 x-api-key (Header) 或 key (Form) 提供。
+    2. Cookie 验证：通过检查已登录用户的会话 cookie。
     """
-    # 检查用户是否通过会话登录
-    is_logged_in_via_session = request.session.get("logged_in", False)
-
-    # 如果设置了 PICGO_API_KEY 且用户未通过会话登录，则验证 API 密钥
-    if settings.PICGO_API_KEY and not is_logged_in_via_session:
-        submitted_key = x_api_key or key
-        if settings.PICGO_API_KEY != submitted_key:
+    # 验证逻辑
+    submitted_key = x_api_key or key
+    if submitted_key:
+        # 场景1: 使用 API 密钥验证 (适用于 PicGo 等客户端)
+        if settings.PICGO_API_KEY and settings.PICGO_API_KEY == submitted_key:
+            pass # 验证通过
+        else:
             raise HTTPException(status_code=401, detail="无效的 API 密钥")
+    else:
+        # 场景2: 使用 Cookie 验证 (适用于 Web 前端)
+        active_password = get_active_password()
+        session_password = request.cookies.get("password")
+        if active_password and session_password == active_password:
+            pass # 验证通过
+        else:
+            # 如果两种方式都失败，则拒绝访问
+            raise HTTPException(status_code=401, detail="未经授权的访问")
     temp_file_path = None
     try:
         # 使用 tempfile 创建一个安全的临时文件
