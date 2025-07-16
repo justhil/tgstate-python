@@ -22,7 +22,6 @@ async def upload_file(
     telegram_service: TelegramService = Depends(get_telegram_service),
     x_api_key: Optional[str] = Header(None) # 从请求头中获取 x-api-key
 ):
-    print(f"接收到来自 {request.client.host} 的上传请求: {file.filename}")
     """
     处理文件上传。
     此端点现在支持两种验证方式：
@@ -100,11 +99,9 @@ async def upload_file(
     if file_id:
         file_path = f"/d/{file_id}" # 使用 /d/ 路由进行下载
         full_url = f"{settings.BASE_URL.strip('/')}{file_path}"
-        # 返回符合 PicGo 规范的成功响应
-        return JSONResponse(content={"success": True, "result": [full_url]})
+        return {"path": file_path, "url": str(full_url)}
     else:
-        # 返回符合 PicGo 规范的失败响应
-        return JSONResponse(status_code=500, content={"success": False, "message": "文件上传失败。"})
+        raise HTTPException(status_code=500, detail="文件上传失败。")
 
 @router.get("/d/{file_id}")
 async def download_file(

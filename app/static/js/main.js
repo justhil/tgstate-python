@@ -141,7 +141,7 @@ function handleUploadCompletion(xhr, originalFileName, fileId) {
     let uploadedHTML;
     if (xhr.status === 200) {
         const response = JSON.parse(xhr.responseText);
-        const fileUrl = response.result[0];
+        const fileUrl = response.url;
         uploadedHTML = `<div class="row" id="uploaded-${fileId}">
                                 <div class="content">
                                     <i class="fas fa-check-circle success-icon"></i>
