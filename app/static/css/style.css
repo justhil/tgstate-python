@@ -1165,3 +1165,115 @@ input[type="checkbox"]:hover {
         font-size: 1.8rem;
     }
 }
+/* --- Settings Page --- */
+.settings-page-container {
+    max-width: 800px;
+    width: 100%;
+}
+
+.settings-card {
+    background-color: var(--container-bg);
+    padding: 30px 40px;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px var(--shadow-color);
+    text-align: left;
+    border: 1px solid var(--border-color);
+}
+
+.settings-card h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-color);
+}
+
+.settings-card p {
+    color: var(--text-light);
+    margin-bottom: 25px;
+    line-height: 1.6;
+}
+
+.settings-form .form-group {
+    margin-bottom: 20px;
+}
+
+.settings-form label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-color);
+}
+
+.settings-form .input-wrapper {
+    position: relative;
+}
+
+.settings-form .input-wrapper i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-light);
+}
+
+.settings-form input[type="password"] {
+    width: 100%;
+    padding: 12px 15px 12px 45px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    box-sizing: border-box;
+}
+
+.settings-form input[type="password"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.2);
+}
+
+.btn-submit {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 25px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.btn-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.btn-submit i {
+    font-size: 1.1em;
+}
+
+.message {
+    margin-top: 20px;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: 500;
+    text-align: center;
+}
+
+.message.success {
+    background-color: rgba(45, 206, 137, 0.1);
+    color: var(--success-color);
+}
+
+.message.error {
+    background-color: rgba(245, 54, 92, 0.1);
+    color: var(--danger-color);
+}

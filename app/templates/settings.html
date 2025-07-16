@@ -1,65 +1,70 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>设置 - tgState</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>设置</h1>
-            <nav>
-                <a href="/">主页</a>
-                <a href="/image_hosting">图床</a>
-            </nav>
-        </header>
-        <main>
-            <div class="settings-form">
-                <h2>设置访问密码</h2>
-                <p>在这里设置一个新的全局访问密码。如果留空，则密码保护将依赖于环境变量的设置。</p>
-                <form id="password-form">
-                    <div class="form-group">
-                        <label for="password">新密码:</label>
-                        <input type="password" id="password" name="password" placeholder="输入新密码" required>
-                    </div>
-                    <button type="submit">保存密码</button>
-                </form>
-                <p id="message" class="message"></p>
+{% extends "base.html" %}
+
+{% block title %}设置 - tgState{% endblock %}
+
+{% block content %}
+<div class="container settings-page-container">
+    <h1><i class="fas fa-cogs"></i> 应用设置</h1>
+    <p class="subtitle">管理您的 tgState 应用配置</p>
+
+    <div class="settings-card">
+        <h2><i class="fas fa-key"></i> 设置访问密码</h2>
+        <p>在这里设置一个新的全局访问密码。如果留空，则密码保护将依赖于环境变量的设置。</p>
+        <form id="password-form" class="settings-form">
+            <div class="form-group">
+                <label for="password">新密码</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" name="password" placeholder="输入新密码" required>
+                </div>
             </div>
-        </main>
+            <button type="submit" class="btn-submit">
+                <i class="fas fa-save"></i> 保存密码
+            </button>
+        </form>
+        <p id="message" class="message"></p>
     </div>
-    <script>
-        document.getElementById('password-form').addEventListener('submit', async function(event) {
-            event.preventDefault();
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // 激活导航栏的当前页面链接
+    document.getElementById('nav-settings')?.classList.add('active');
+
+    const passwordForm = document.getElementById('password-form');
+    const messageEl = document.getElementById('message');
+
+    passwordForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        
+        const password = document.getElementById('password').value;
+        
+        messageEl.textContent = '';
+        messageEl.className = 'message';
+
+        try {
+            const response = await fetch('/api/set-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ password: password }),
+            });
             
-            const password = document.getElementById('password').value;
-            const messageEl = document.getElementById('message');
+            const result = await response.json();
             
-            try {
-                const response = await fetch('/api/set-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ password: password }),
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    messageEl.textContent = '密码已成功更新！';
-                    messageEl.className = 'message success';
-                } else {
-                    messageEl.textContent = '错误: ' + (result.detail || '未知错误');
-                    messageEl.className = 'message error';
-                }
-            } catch (error) {
-                messageEl.textContent = '请求失败: ' + error.message;
+            if (response.ok) {
+                messageEl.textContent = '✓ 密码已成功更新！';
+                messageEl.className = 'message success';
+            } else {
+                messageEl.textContent = '✗ 错误: ' + (result.detail || '未知错误');
                 messageEl.className = 'message error';
             }
-        });
-    </script>
-</body>
-</html>
+        } catch (error) {
+            messageEl.textContent = '✗ 请求失败: ' + error.message;
+            messageEl.className = 'message error';
+        }
+    });
+});
+</script>
+{% endblock %}
