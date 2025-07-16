@@ -1,5 +1,3 @@
-
-
 # tgState V2 - Python 版
 
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)[![Framework](https://img.shields.io/badge/Framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
@@ -22,28 +20,18 @@
 
 ### 使用 Docker 部署
 
-1. **创建配置文件**: 在项目根目录下，创建一个名为 `.env` 的文件，并填入您的配置信息。
+```bash
+docker run -d \
+  --name my-telegram-app \
+  -p 8000:8000 \
+  -e BOT_TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" \
+  -e CHANNEL_NAME="@my_test_channel" \
+  -e PASS_WORD="supersecret" \
+  -e BASE_URL="https://my-service.com" \
+  -e PICGO_API_KEY="supersecret(可选不需要就删除这行)" \
+  mitu233/python-tgstate:latest
+```
 
-   ```env
-   # .env 文件
-   # 必填项
-   BOT_TOKEN=your_telegram_bot_token
-   CHANNEL_NAME=@your_telegram_channel_or_your_id
-   
-   # 可选项
-   # PASS_WORD=your_secret_password
-   # BASE_URL=https://your.domain.com
-   ```
-
-2. **构建并运行 Docker 容器**:
-
-   ```bash
-   # 构建 Docker 镜像
-   docker build -t tgstate-py .
-   
-   # 运行容器
-   docker run -d -p 8000:8000 --env-file .env --name tgstate-py-app tgstate-py
-   ```
 
 3. **访问应用**: 在浏览器中打开 `http://localhost:8000` 即可开始使用。
 
