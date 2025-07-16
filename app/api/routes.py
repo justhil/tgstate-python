@@ -2,6 +2,7 @@ import httpx
 import tempfile
 import os
 import shutil
+import mimetypes
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Response, Request, Header, Form
 from pydantic import BaseModel
@@ -160,10 +161,16 @@ async def download_file(
         
         filename_encoded = quote(str(filename))
         
+        # 动态获取 Content-Type
+        content_type, _ = mimetypes.guess_type(filename)
+        if content_type is None:
+            content_type = "application/octet-stream"  # 如果无法猜测，则使用默认值
+
         # 根据是否为图片设置不同的 Content-Disposition
         disposition_type = "inline" if is_image else "attachment"
         response_headers = {
             'Content-Disposition': f"{disposition_type}; filename*=UTF-8''{filename_encoded}",
+            'Content-Type': content_type,  # 关键修复：添加 Content-Type 头
         }
 
         async def single_file_streamer():
