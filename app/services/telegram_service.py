@@ -181,7 +181,7 @@ class TelegramService:
             print(f"从 Telegram 获取下载链接时出错: {e}")
             return None
 
-    async def delete_message(self, message_id: int) -> bool:
+    async def delete_message(self, message_id: int) -> tuple[bool, str]:
         """
         从频道中删除指定 ID 的消息。
 
@@ -189,22 +189,25 @@ class TelegramService:
             message_id: 要删除的消息的 ID。
 
         返回:
-            如果成功，则返回 True，否则返回 False。
+            一个元组 (success, reason)，其中 success 表示逻辑上是否成功，
+            reason 可以是 'deleted', 'not_found', 或 'error'。
         """
         try:
-            # bot.delete_message 返回 True 表示成功
-            success = await self.bot.delete_message(
+            await self.bot.delete_message(
                 chat_id=self.channel_name,
                 message_id=message_id
             )
-            return success
+            return (True, "deleted")
         except telegram.error.BadRequest as e:
-            # 处理消息找不到或无权删除等情况
-            print(f"删除消息 {message_id} 失败: {e}")
-            return False
+            if "not found" in str(e).lower():
+                print(f"消息 {message_id} 未找到，视为已删除。")
+                return (True, "not_found")
+            else:
+                print(f"删除消息 {message_id} 失败 (BadRequest): {e}")
+                return (False, "error")
         except Exception as e:
             print(f"删除消息 {message_id} 时发生未知错误: {e}")
-            return False
+            return (False, "error")
 
     async def delete_file_with_chunks(self, file_id: str) -> dict:
         """
@@ -257,7 +260,8 @@ class TelegramService:
                             try:
                                 chunk_message_id_str, _ = chunk_id.split(':', 1)
                                 chunk_message_id = int(chunk_message_id_str)
-                                if await self.delete_message(chunk_message_id):
+                                success, _ = await self.delete_message(chunk_message_id)
+                                if success:
                                     results["deleted_chunks"].append(chunk_id)
                                 else:
                                     results["failed_chunks"].append(chunk_id)
@@ -271,12 +275,18 @@ class TelegramService:
                 # 即使清单处理失败，我们也要继续尝试删除主消息
 
         # 步骤 2: 删除主消息 (清单文件本身或单个文件)
-        if await self.delete_message(main_message_id):
-            results["main_message_deleted"] = True
-            print(f"主消息 {main_message_id} 已成功删除。")
+        main_message_deleted, delete_reason = await self.delete_message(main_message_id)
+        results["main_message_deleted"] = main_message_deleted
+        
+        if main_message_deleted:
+            if delete_reason == "deleted":
+                print(f"主消息 {main_message_id} 已成功删除。")
+            elif delete_reason == "not_found":
+                print(f"主消息 {main_message_id} 在 Telegram 中未找到，视为成功。")
         else:
             print(f"删除主消息 {main_message_id} 失败。")
 
+        # 步骤 3: 决定最终状态
         if results["main_message_deleted"] and (not results["is_manifest"] or not results["failed_chunks"]):
              results["status"] = "success"
         else:

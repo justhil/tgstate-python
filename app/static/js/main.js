@@ -104,22 +104,30 @@ function deleteFile(fileId) {
     fetch(`/api/files/${fileId}`, {
         method: 'DELETE',
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            // 如果响应状态码不是 2xx，则先解析错误信息
+            return response.json().then(err => Promise.reject(err));
+        }
+        return response.json(); // 否则正常解析成功响应
+    })
     .then(data => {
-        if (data.status === 'ok' || data.status === 'partial_success') {
-            console.log(data.message);
-            // Remove the file item from the DOM
+        if (data.status === 'ok') {
+            showToast(data.message || `File ${fileId} deleted successfully.`);
             const fileItem = document.getElementById(`file-item-${fileId.replace(':', '-')}`);
             if (fileItem) {
                 fileItem.remove();
             }
         } else {
-            alert('Error deleting file: ' + data.detail);
+            // 这种情况理论上不应该发生，因为错误已在 .catch 中处理
+            showToast(`An unexpected issue occurred: ${data.message}`, 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred while deleting the file.');
+        // 从 error 对象中提取更详细的错误信息
+        const errorMessage = error.detail?.message || error.message || 'An error occurred while deleting the file.';
+        showToast(errorMessage, 'error');
     });
 }
 
@@ -345,24 +353,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ file_ids: fileIds }),
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => Promise.reject(err));
+                }
+                return response.json();
+            })
             .then(data => {
                 let successCount = 0;
-                if (data.deleted) {
+                let failedCount = 0;
+
+                if (data.deleted && data.deleted.length > 0) {
                     successCount = data.deleted.length;
-                    data.deleted.forEach(fileId => {
-                        const fileItem = document.getElementById(`file-item-${fileId.replace(':', '-')}`);
-                        if (fileItem) fileItem.remove();
+                    // 从成功的响应中提取 file_id
+                    data.deleted.forEach(res => {
+                        // 假设成功的响应体中包含 file_id
+                        const fileId = res.details?.file_id || (typeof res === 'string' ? res : null);
+                        if (fileId) {
+                            const fileItem = document.getElementById(`file-item-${fileId.replace(':', '-')}`);
+                            if (fileItem) fileItem.remove();
+                        }
                     });
                 }
-                showToast(`Successfully deleted ${successCount} file(s).`, 'success');
-                
+
                 if (data.failed && data.failed.length > 0) {
-                    const failedIds = data.failed.map(f => f.file_id).join(', ');
-                    showToast(`Failed to delete: ${failedIds}`, 'error');
+                    failedCount = data.failed.length;
+                    const failedMessages = data.failed.map(f => f.message || `ID: ${f.details?.file_id}`).join('\n');
+                    showToast(`Failed to delete ${failedCount} file(s). See console for details.`, 'error');
+                    console.error("Failed deletions:", failedMessages);
                 }
-                // After deletion, we need to re-query the checkboxes and update controls
-                window.location.reload();
+
+                if (successCount > 0) {
+                    showToast(`Successfully deleted ${successCount} file(s).`, 'success');
+                }
+                
+                if (failedCount === 0 && successCount === 0) {
+                    showToast('No files were deleted.', 'info');
+                }
+
+                // Update UI without reloading
+                updateBatchControls();
             })
             .catch(error => {
                 console.error('Error:', error);

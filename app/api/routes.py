@@ -188,24 +188,33 @@ async def delete_file(
     # 步骤 1: 调用新的、更全面的删除服务
     delete_result = await telegram_service.delete_file_with_chunks(file_id)
 
-    # 步骤 2: 从数据库中删除元数据
-    # 只有在主消息（或清单）成功从 Telegram 删除后才执行此操作
-    if delete_result.get("main_message_deleted"):
+    # 步骤 2: 检查删除结果，特别是处理“未找到”的情况
+    # 关键逻辑：如果 TG 返回“未找到”，我们应将其视为成功，并确保数据库同步
+    is_not_found_error = "not found" in delete_result.get("error", "").lower()
+
+    if delete_result.get("main_message_deleted") or is_not_found_error:
+        # 如果 TG 确认删除，或者返回“未找到”，我们都清理数据库
         was_deleted_from_db = database.delete_file_metadata(file_id)
-        if not was_deleted_from_db:
-            # 这是一个奇怪的状态：TG 删除了但数据库没有找到。
-            # 可能是重复删除请求。我们将其视为成功，但添加一个注释。
-            delete_result["db_status"] = "not_found"
+        
+        if is_not_found_error:
+            print(f"文件 {file_id} 在 Telegram 中未找到，视为已删除。正在清理数据库...")
+            delete_result["db_status"] = "deleted_after_not_found"
+            # 强制将状态置为成功，以便前端正确处理
+            delete_result["status"] = "success"
+        elif not was_deleted_from_db:
+            delete_result["db_status"] = "not_found_in_db"
             print(f"警告: 文件 {file_id} 在 Telegram 中已删除，但在数据库中未找到。")
         else:
             delete_result["db_status"] = "deleted"
     else:
-        delete_result["db_status"] = "skipped"
+        # 仅在删除失败且不是“未找到”错误时，才跳过数据库操作
+        delete_result["db_status"] = "skipped_due_to_tg_error"
 
-
-    # 步骤 3: 根据结果返回响应
+    # 步骤 3: 根据最终状态返回响应
     if delete_result["status"] == "success":
-        return {"status": "ok", "message": f"文件 {file_id} 已成功删除。", "details": delete_result}
+        # 包含了正常删除和“未找到”的情况
+        return {"status": "ok", "message": f"文件 {file_id} 已成功处理。", "details": delete_result}
+    
     elif delete_result["status"] == "partial_failure":
         raise HTTPException(
             status_code=500,
@@ -215,6 +224,7 @@ async def delete_file(
             }
         )
     else: # 'error'
+        # 现在只有真正的、非“未找到”的错误才会走到这里
         raise HTTPException(
             status_code=400,
             detail={
