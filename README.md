@@ -20,9 +20,10 @@
 *   **大文件支持**: 自动处理大文件分块上传。
 *   **密码保护**: 可选的密码保护机制，确保您的 Web 界面安全。
 
-<img src="https://tgstate.justhil.uk/d/405:BQACAgEAAyEGAASW4jjnAAIBlWh3jtFpscjgGmvnebBQ1jsjLNpZAAKWBAACKlfBR27j2SbkVoc1NgQ" alt="image-20250716193647591" style="zoom:50%;" />
+<img src="https://tgstate.justhil.uk/d/410:BQACAgEAAyEGAASW4jjnAAIBmmh3ku0_aJ2x-lqrh7jWkRDzLSIQAAKbBAACKlfBRwdEPuNk9gfKNgQ/%E4%B8%BB%E9%A1%B5.png" style="zoom:50%;" />
+<img src="https://tgstate.justhil.uk/d/409:BQACAgEAAyEGAASW4jjnAAIBmWh3kuxPT5LfidK42mn0i8iRhTDiAAKaBAACKlfBR2NtAAFcUYplmDYE/%E5%9B%BE%E5%BA%8A.png" style="zoom:50%;" />
 
-<img src="https://tgstate.justhil.uk/d/404:BQACAgEAAyEGAASW4jjnAAIBlGh3jsLuOUt-i7nqNTf111BKZeARAAKVBAACKlfBRwABrCtyRxRtgzYE" alt="image-20250716193632089" style="zoom:50%;" />
+
 
 
 
@@ -121,7 +122,7 @@ docker run -d \
 
 6. **群组获取链接: **群组中回复文件get获取下载链接
 
-   <img src="https://tgstate.justhil.uk/d/403:BQACAgEAAyEGAASW4jjnAAIBk2h3jqlUijKxyoVfkxABB92NsCJgAAKUBAACKlfBR83_LOTAoXxwNgQ" alt="image-20250716193607595" style="zoom:50%;" />
+   <img src="https://tgstate.justhil.uk/d/408:BQACAgEAAyEGAASW4jjnAAIBmGh3kuqRumdoYCUgg1KdxhmnU_3xAAKZBAACKlfBR9JpqfvggtR8NgQ/%E7%BE%A4%E7%BB%84%E5%9B%9E%E5%A4%8D.png" style="zoom:50%;" />
 
 ## PicGo 配置指南
 
@@ -143,7 +144,7 @@ docker run -d \
 
 6. **自定义body**：{"key":"PICGO_API_KEY"}（可选推荐）(验证方式二选一)
 
-   ![image-20250716193345387](https://tgstate.justhil.uk/d/402:BQACAgEAAyEGAASW4jjnAAIBkmh3jhuMFmcPm0ITenN3hIr0HXKTAAKTBAACKlfBR1q9b44ed_i_NgQ)
+   <img src="https://tgstate.justhil.uk/d/407:BQACAgEAAyEGAASW4jjnAAIBl2h3kujY6McRWgIztAAB2mabiph9YgACmAQAAipXwUcH3E_AI0NrhDYE/picgo.png" style="zoom:80%;" />
 
 
 
