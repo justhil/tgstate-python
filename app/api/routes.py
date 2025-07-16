@@ -98,15 +98,17 @@ async def upload_file(
             os.unlink(temp_file_path)
 
     if file_id:
-        file_path = f"/d/{file_id}" # 使用 /d/ 路由进行下载
+        encoded_filename = quote(file.filename)
+        file_path = f"/d/{file_id}/{encoded_filename}" # 关键变更：将文件名添加到URL中
         full_url = f"{settings.BASE_URL.strip('/')}{file_path}"
         return {"path": file_path, "url": str(full_url)}
     else:
         raise HTTPException(status_code=500, detail="文件上传失败。")
 
-@router.get("/d/{file_id}")
+@router.get("/d/{file_id}/{filename}")
 async def download_file(
     file_id: str, # Note: This can be a composite ID "message_id:file_id"
+    filename: str, # 关键变更：从URL中获取原始文件名
     telegram_service: TelegramService = Depends(get_telegram_service),
     client: httpx.AsyncClient = Depends(get_http_client) # 注入共享客户端
 ):
@@ -152,8 +154,7 @@ async def download_file(
         return StreamingResponse(stream_chunks(chunk_file_ids, telegram_service, client), headers=response_headers)
     else:
         # 是单个文件，直接流式传输
-        file_info = database.get_file_by_id(file_id)
-        filename = file_info.get("filename", f"file_{file_id}") if file_info else f"file_{file_id}"
+        # 关键变更：文件名现在直接从URL参数中获取，不再需要数据库查询。
 
         # 检查文件是否为图片
         image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')
