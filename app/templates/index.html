@@ -61,4 +61,10 @@
     </div>
 </div>
 <script src="{{ url_for('static', path='/js/main.js') }}?v=2.3"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // 激活导航栏的当前页面链接
+    document.getElementById('nav-home')?.classList.add('active');
+});
+</script>
 {% endblock %}

@@ -27,8 +27,3 @@ templates = Jinja2Templates(directory="app/templates")
 app.include_router(api_routes.router)
 app.include_router(pages_router)
 
-# 根路由重定向到图床页面，方便使用
-@app.get("/")
-async def read_root():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/image_hosting")

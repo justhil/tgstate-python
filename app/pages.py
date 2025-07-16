@@ -7,6 +7,14 @@ from .core.config import get_active_password, get_settings
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+@router.get("/", response_class=HTMLResponse)
+async def main_page(request: Request):
+    """
+    提供主页，展示文件上传区域和所有文件的列表。
+    """
+    files = database.get_all_files()
+    return templates.TemplateResponse("index.html", {"request": request, "files": files})
+
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
