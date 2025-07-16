@@ -49,7 +49,7 @@ async def image_hosting_page(request: Request):
             "filename": file["filename"],
             "file_id": file["file_id"],
             "size": file["filesize"],
-            "url": f"/file/{file['file_id']}",
+            "url": f"/d/{file['file_id']}",
             "upload_date": file["upload_date"]
         }
         for file in files if file["filename"].lower().endswith(image_extensions)

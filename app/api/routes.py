@@ -124,10 +124,17 @@ async def download_file(
         # 是单个文件，直接流式传输
         file_info = database.get_file_by_id(file_id)
         filename = file_info.get("filename", f"file_{file_id}") if file_info else f"file_{file_id}"
+
+        # 检查文件是否为图片
+        image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')
+        is_image = filename.lower().endswith(image_extensions)
         
         filename_encoded = quote(str(filename))
+        
+        # 根据是否为图片设置不同的 Content-Disposition
+        disposition_type = "inline" if is_image else "attachment"
         response_headers = {
-            'Content-Disposition': f"attachment; filename*=UTF-8''{filename_encoded}",
+            'Content-Disposition': f"{disposition_type}; filename*=UTF-8''{filename_encoded}",
         }
 
         async def single_file_streamer():
