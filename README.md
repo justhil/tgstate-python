@@ -21,7 +21,6 @@
 *   **直接链接**: 为每个上传的文件生成一个可直接分享的链接。
 *   **大文件支持**: 自动处理大文件分块上传。
 *   **密码保护**: 可选的密码保护机制，确保您的 Web 界面安全。
-*   **自动构建镜像**: 推送到 `main` 或发布标签后，GitHub Actions 会自动构建并推送 Docker 镜像。
 
 <img src="https://tgstate.justhil.uk/d/410:BQACAgEAAyEGAASW4jjnAAIBmmh3ku0_aJ2x-lqrh7jWkRDzLSIQAAKbBAACKlfBRwdEPuNk9gfKNgQ/%E4%B8%BB%E9%A1%B5.png" style="zoom:50%;" />
 <img src="https://tgstate.justhil.uk/d/409:BQACAgEAAyEGAASW4jjnAAIBmWh3kuxPT5LfidK42mn0i8iRhTDiAAKaBAACKlfBR2NtAAFcUYplmDYE/%E5%9B%BE%E5%BA%8A.png" style="zoom:50%;" />
@@ -36,14 +35,6 @@
 
 推荐使用 Docker 来部署 `tgState`，这是最简单快捷的方式。
 
-### 使用预构建镜像
-
-当前仓库默认会在 GitHub Container Registry 发布镜像：
-
-```bash
-docker pull ghcr.io/justhil/tgstate-python:latest
-```
-
 ### 使用 Docker 部署
 
 ```bash
@@ -55,7 +46,7 @@ docker run -d \
   -e PASS_WORD="supersecret" \
   -e BASE_URL="https://my-service.com" \
   -e PICGO_API_KEY="supersecret(可选不需要就删除这行)" \
-  ghcr.io/justhil/tgstate-python:latest
+  mitu233/python-tgstate:latest
 ```
 
 
@@ -181,37 +172,5 @@ docker run -d \
 - `TG_API_HASH`
 
 这两个配置用于启用 MTProto 对账服务。未配置时，网页删除与 PicList 删除仍然可正常同步，但群组内手动删除不会自动回写前端。
-
-## Docker 自动构建
-
-仓库已经包含 GitHub Actions 工作流：`.github/workflows/docker-image.yml`
-
-触发条件：
-
-- 推送到 `main`
-- 推送 `v*` 标签
-- 手动触发 `workflow_dispatch`
-
-默认行为：
-
-- 自动构建 Docker 镜像
-- 自动推送到 `ghcr.io/justhil/tgstate-python`
-- 生成 `latest`、分支名、标签名、`sha-<commit>` 等镜像标签
-
-可选行为：
-
-- 如果仓库 Secrets 中配置了 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`
-- 工作流会同时推送到 Docker Hub：`<DOCKERHUB_USERNAME>/tgstate-python`
-
-### 需要配置的 GitHub Secrets
-
-如果只推送到 GHCR，不需要额外配置 Docker 凭据。
-
-如果还需要同步推送到 Docker Hub，请在仓库 `Settings -> Secrets and variables -> Actions` 中添加：
-
-- `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN`
-
-其中 `DOCKERHUB_TOKEN` 建议使用 Docker Hub Access Token，不要直接使用账号密码。
 
 用 roocode 和 白嫖的心 制作。****
