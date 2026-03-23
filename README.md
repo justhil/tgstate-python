@@ -46,6 +46,11 @@ docker run -d \
   -e PASS_WORD="supersecret" \
   -e BASE_URL="https://my-service.com" \
   -e PICGO_API_KEY="supersecret(可选不需要就删除这行)" \
+  -e TG_API_ID="123456" \
+  -e TG_API_HASH="your_telegram_api_hash" \
+  -e TELEGRAM_SYNC_SESSION="tgstate-sync" \
+  -e TELEGRAM_SYNC_SESSION_STRING="your_telegram_user_session_string" \
+  -e TELEGRAM_RECONCILE_INTERVAL="60" \
   ghcr.io/justhil/tgstate-python:latest
 ```
 
@@ -103,7 +108,26 @@ docker run -d \
 | `TG_API_HASH`   | Telegram MTProto `api_hash`，用于建立 MTProto 客户端。       | 否       | `None`                  |
 | `TELEGRAM_SYNC_SESSION` | Bot MTProto 会话名称。                               | 否       | `tgstate-sync`          |
 | `TELEGRAM_SYNC_SESSION_STRING` | 启动时历史回填用的用户会话字符串。          | 否       | `None`                  |
-| `TELEGRAM_RECONCILE_INTERVAL` | 群组删除对账周期，单位秒。                     | 否       | `60`                    |
+| `TELEGRAM_RECONCILE_INTERVAL` | 预留配置，当前版本未启用常驻删除对账。         | 否       | `60`                    |
+
+### Telegram 历史同步配置示例
+
+如果需要在重启后自动从 Telegram 历史消息恢复前端文件列表，可以在 `.env` 中增加以下配置：
+
+```env
+TG_API_ID=123456
+TG_API_HASH=your_telegram_api_hash
+TELEGRAM_SYNC_SESSION=tgstate-sync
+TELEGRAM_SYNC_SESSION_STRING=your_telegram_user_session_string
+TELEGRAM_RECONCILE_INTERVAL=60
+```
+
+各配置的作用：
+
+- `TG_API_ID` / `TG_API_HASH`：Telegram 应用凭证，用于建立 MTProto 连接。
+- `TELEGRAM_SYNC_SESSION`：Bot 运行期会话名称，用于存放 Bot 侧会话文件。
+- `TELEGRAM_SYNC_SESSION_STRING`：用户会话字符串，只在启动时用于扫描历史文件。
+- `TELEGRAM_RECONCILE_INTERVAL`：预留配置，当前版本未启用常驻删除对账。
 
 ## 注意密码相关
 
@@ -165,26 +189,61 @@ docker run -d \
 
 如果你在 PicList 中通过脚本系统调用删除接口，请继续沿用上传时配置的 `x-api-key`。
 
-### 群组删除同步
+### PicList 删除同步脚本示例
 
-如果希望在 Telegram 群组内手动删除消息后，网页前端也自动同步，需要额外配置：
+如果你在 PicList 中启用了删除后脚本，可以直接调用 `/api/delete`：
+
+```javascript
+async function main(ctx, extra) {
+  if (!extra || !extra.galleryItem) {
+    return ctx
+  }
+
+  await axios.post(
+    'https://your-domain/api/delete',
+    {
+      list: [extra.galleryItem]
+    },
+    {
+      headers: {
+        'x-api-key': 'your_picgo_api_key',
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000
+    }
+  )
+
+  return ctx
+}
+```
+
+说明：
+
+- `https://your-domain/api/delete` 替换为你自己的服务地址
+- `x-api-key` 替换为你配置的 `PICGO_API_KEY`
+- `extra.galleryItem` 会包含上传结果中的 `url`、`file_id`、`fullResult` 等信息，服务端会自动解析并删除对应文件
+
+### Telegram 历史恢复与群组删除说明
+
+如果希望在服务重启后自动从 Telegram 历史消息恢复前端文件列表，可以额外配置：
 
 - `TG_API_ID`
 - `TG_API_HASH`
 - `TELEGRAM_SYNC_SESSION_STRING`
 
-`TG_API_ID` 和 `TG_API_HASH` 只是 Telegram 应用凭证，用于建立 MTProto 连接，本身不能代表一个已登录用户。
+这些配置只用于**启动时历史回填**。
 
-项目现在的同步流程是：
+当前版本**不提供**“群组内手动删除消息后，网页前端实时同步删除”的功能。
 
-1. 启动时如果配置了 `TELEGRAM_SYNC_SESSION_STRING`，先临时使用**用户会话**扫描历史并重建前端列表。
-2. 历史回填完成后，立即断开用户会话。
-3. 运行期切换回 **Bot 会话**，继续处理实时删除同步。
+原因是这项能力要做得稳定，通常需要常驻一个**用户会话进程**持续监听或对账。项目不采用这个方案，主要是因为：
 
-因此：
+- 常驻用户会话可能会增加账号风控和封号风险
+- 部署复杂度更高，维护成本也更高
 
-- `TELEGRAM_SYNC_SESSION_STRING` 只负责启动时历史回填
-- 网页删除、PicList 删除不需要用户会话，仍然由 Bot 删除消息
-- 未配置 `TELEGRAM_SYNC_SESSION_STRING` 时，网页删除与 PicList 删除仍然可正常同步，但群组内历史文件不会自动重建到前端
+因此当前版本的边界是：
+
+- `TELEGRAM_SYNC_SESSION_STRING` 只负责启动时扫描历史并恢复前端列表
+- 网页删除、PicList 删除仍然可正常同步到 Telegram
+- Telegram 群组内手动删除消息，不会实时回写前端列表
 
 用 roocode 和 白嫖的心 制作。****
