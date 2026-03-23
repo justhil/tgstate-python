@@ -1,6 +1,8 @@
 # tgState V2 - Python 版
 
-[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)[![Framework](https://img.shields.io/badge/Framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Framework](https://img.shields.io/badge/Framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
 `tgState` 原项目链接[csznet/tgState](https://github.com/csznet/tgState)，使用fastapi重构。
 
@@ -19,6 +21,7 @@
 *   **直接链接**: 为每个上传的文件生成一个可直接分享的链接。
 *   **大文件支持**: 自动处理大文件分块上传。
 *   **密码保护**: 可选的密码保护机制，确保您的 Web 界面安全。
+*   **自动构建镜像**: 推送到 `main` 或发布标签后，GitHub Actions 会自动构建并推送 Docker 镜像。
 
 <img src="https://tgstate.justhil.uk/d/410:BQACAgEAAyEGAASW4jjnAAIBmmh3ku0_aJ2x-lqrh7jWkRDzLSIQAAKbBAACKlfBRwdEPuNk9gfKNgQ/%E4%B8%BB%E9%A1%B5.png" style="zoom:50%;" />
 <img src="https://tgstate.justhil.uk/d/409:BQACAgEAAyEGAASW4jjnAAIBmWh3kuxPT5LfidK42mn0i8iRhTDiAAKaBAACKlfBR2NtAAFcUYplmDYE/%E5%9B%BE%E5%BA%8A.png" style="zoom:50%;" />
@@ -33,6 +36,14 @@
 
 推荐使用 Docker 来部署 `tgState`，这是最简单快捷的方式。
 
+### 使用预构建镜像
+
+当前仓库默认会在 GitHub Container Registry 发布镜像：
+
+```bash
+docker pull ghcr.io/justhil/tgstate-python:latest
+```
+
 ### 使用 Docker 部署
 
 ```bash
@@ -44,7 +55,7 @@ docker run -d \
   -e PASS_WORD="supersecret" \
   -e BASE_URL="https://my-service.com" \
   -e PICGO_API_KEY="supersecret(可选不需要就删除这行)" \
-  mitu233/python-tgstate:latest
+  ghcr.io/justhil/tgstate-python:latest
 ```
 
 
@@ -97,6 +108,10 @@ docker run -d \
 | `PASS_WORD`     | 用于保护 Web 界面访问的密码。如果留空，则应用将公开访问，无需密码。 | 否       | `None`                  |
 | `BASE_URL`      | 您的服务的公共 URL。用于生成完整的下载链接。                 | 否       | `http://127.0.0.1:8000` |
 | `PICGO_API_KEY` | 用于 PicGo 上传接口的 API 密钥。                             | 否       | `None`                  |
+| `TG_API_ID`     | Telegram MTProto `api_id`，用于同步群组内手动删除到前端。    | 否       | `None`                  |
+| `TG_API_HASH`   | Telegram MTProto `api_hash`，用于同步群组内手动删除到前端。  | 否       | `None`                  |
+| `TELEGRAM_SYNC_SESSION` | MTProto 会话名称。                                  | 否       | `tgstate-sync`          |
+| `TELEGRAM_RECONCILE_INTERVAL` | 群组删除对账周期，单位秒。                     | 否       | `60`                    |
 
 ## 注意密码相关
 
@@ -166,5 +181,37 @@ docker run -d \
 - `TG_API_HASH`
 
 这两个配置用于启用 MTProto 对账服务。未配置时，网页删除与 PicList 删除仍然可正常同步，但群组内手动删除不会自动回写前端。
+
+## Docker 自动构建
+
+仓库已经包含 GitHub Actions 工作流：`.github/workflows/docker-image.yml`
+
+触发条件：
+
+- 推送到 `main`
+- 推送 `v*` 标签
+- 手动触发 `workflow_dispatch`
+
+默认行为：
+
+- 自动构建 Docker 镜像
+- 自动推送到 `ghcr.io/justhil/tgstate-python`
+- 生成 `latest`、分支名、标签名、`sha-<commit>` 等镜像标签
+
+可选行为：
+
+- 如果仓库 Secrets 中配置了 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`
+- 工作流会同时推送到 Docker Hub：`<DOCKERHUB_USERNAME>/tgstate-python`
+
+### 需要配置的 GitHub Secrets
+
+如果只推送到 GHCR，不需要额外配置 Docker 凭据。
+
+如果还需要同步推送到 Docker Hub，请在仓库 `Settings -> Secrets and variables -> Actions` 中添加：
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+其中 `DOCKERHUB_TOKEN` 建议使用 Docker Hub Access Token，不要直接使用账号密码。
 
 用 roocode 和 白嫖的心 制作。****
