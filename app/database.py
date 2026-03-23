@@ -38,7 +38,12 @@ def init_db():
             conn.close()
 
 
-def add_file_metadata(filename: str, file_id: str, filesize: int) -> bool:
+def add_file_metadata(
+    filename: str,
+    file_id: str,
+    filesize: int,
+    upload_date: str | None = None,
+) -> bool:
     """
     向数据库中添加一个新的文件元数据记录。
     返回值表示本次调用是否真正插入了新记录。
@@ -47,10 +52,19 @@ def add_file_metadata(filename: str, file_id: str, filesize: int) -> bool:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute(
-                "INSERT OR IGNORE INTO files (filename, file_id, filesize) VALUES (?, ?, ?)",
-                (filename, file_id, filesize)
-            )
+            if upload_date is None:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO files (filename, file_id, filesize) VALUES (?, ?, ?)",
+                    (filename, file_id, filesize)
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO files (filename, file_id, filesize, upload_date)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (filename, file_id, filesize, upload_date)
+                )
             conn.commit()
             inserted = cursor.rowcount > 0
             print(f"已添加或忽略文件元数据: {filename}")
