@@ -99,9 +99,10 @@ docker run -d \
 | `PASS_WORD`     | 用于保护 Web 界面访问的密码。如果留空，则应用将公开访问，无需密码。 | 否       | `None`                  |
 | `BASE_URL`      | 您的服务的公共 URL。用于生成完整的下载链接。                 | 否       | `http://127.0.0.1:8000` |
 | `PICGO_API_KEY` | 用于 PicGo 上传接口的 API 密钥。                             | 否       | `None`                  |
-| `TG_API_ID`     | Telegram MTProto `api_id`，用于同步群组内手动删除到前端。    | 否       | `None`                  |
-| `TG_API_HASH`   | Telegram MTProto `api_hash`，用于同步群组内手动删除到前端。  | 否       | `None`                  |
-| `TELEGRAM_SYNC_SESSION` | MTProto 会话名称。                                  | 否       | `tgstate-sync`          |
+| `TG_API_ID`     | Telegram MTProto `api_id`，用于建立 MTProto 客户端。         | 否       | `None`                  |
+| `TG_API_HASH`   | Telegram MTProto `api_hash`，用于建立 MTProto 客户端。       | 否       | `None`                  |
+| `TELEGRAM_SYNC_SESSION` | 本地 MTProto 会话名称。                              | 否       | `tgstate-sync`          |
+| `TELEGRAM_SYNC_SESSION_STRING` | 用户 MTProto 会话字符串。                    | 否       | `None`                  |
 | `TELEGRAM_RECONCILE_INTERVAL` | 群组删除对账周期，单位秒。                     | 否       | `60`                    |
 
 ## 注意密码相关
@@ -170,7 +171,18 @@ docker run -d \
 
 - `TG_API_ID`
 - `TG_API_HASH`
+- `TELEGRAM_SYNC_SESSION_STRING`，或预先准备好的 `TELEGRAM_SYNC_SESSION.session`
 
-这两个配置用于启用 MTProto 对账服务。未配置时，网页删除与 PicList 删除仍然可正常同步，但群组内手动删除不会自动回写前端。
+`TG_API_ID` 和 `TG_API_HASH` 只是 Telegram 应用凭证，用于建立 MTProto 连接，本身不能代表一个已登录用户。
+
+如果只用 `bot_token` 登录，Telegram 会限制读取历史消息，因此：
+
+- 可以接收部分实时事件
+- 不能执行启动时历史回填
+- 不能执行基于历史消息的主动对账
+
+要启用历史回填，必须额外提供一个**已授权的用户 MTProto 会话**，推荐使用 `TELEGRAM_SYNC_SESSION_STRING`。
+
+未配置用户会话时，网页删除与 PicList 删除仍然可正常同步，但群组内历史文件不会自动重建到前端。
 
 用 roocode 和 白嫖的心 制作。****

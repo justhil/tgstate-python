@@ -9,9 +9,11 @@ from ..events import publish_file_update
 
 try:
     from telethon import TelegramClient, events
+    from telethon.sessions import StringSession
 except ImportError:  # pragma: no cover - 运行时依赖缺失时的兜底。
     TelegramClient = None
     events = None
+    StringSession = None
 
 MANIFEST_MAGIC = b"tgstate-blob\n"
 MESSAGE_BATCH_SIZE = 100
@@ -30,6 +32,8 @@ class TelegramSyncService:
         self.channel_entity: Any = None
         self._reconcile_task: asyncio.Task | None = None
         self._started = False
+        self._history_capable = False
+        self._session_mode = "disabled"
 
     @property
     def enabled(self) -> bool:
@@ -37,7 +41,6 @@ class TelegramSyncService:
             TelegramClient
             and self.settings.TG_API_ID
             and self.settings.TG_API_HASH
-            and self.settings.BOT_TOKEN
             and self.settings.CHANNEL_NAME
         )
 
@@ -53,25 +56,34 @@ class TelegramSyncService:
                 print("Telegram 删除同步未启用: 缺少 TG_API_ID 或 TG_API_HASH。")
             return False
 
-        self.client = TelegramClient(
-            self.settings.TELEGRAM_SYNC_SESSION,
-            self.settings.TG_API_ID,
-            self.settings.TG_API_HASH
-        )
-        await self.client.start(bot_token=self.settings.BOT_TOKEN)
+        self.client = await self._create_client()
+        if not self.client:
+            return False
+
         self.channel_entity = await self.client.get_entity(self.settings.CHANNEL_NAME)
         self.client.add_event_handler(
             self._handle_message_deleted,
             events.MessageDeleted(chats=self.channel_entity)
         )
 
-        history_added = await self.sync_history_once()
-        await self.reconcile_once()
-        if self.settings.TELEGRAM_RECONCILE_INTERVAL > 0:
-            self._reconcile_task = asyncio.create_task(self._reconcile_loop())
+        history_added = 0
+        if self._history_capable:
+            history_added = await self.sync_history_once()
+            await self.reconcile_once()
+            if self.settings.TELEGRAM_RECONCILE_INTERVAL > 0:
+                self._reconcile_task = asyncio.create_task(self._reconcile_loop())
 
         self._started = True
-        print(f"Telegram 同步服务已启动，历史回填新增 {history_added} 条记录。")
+        if self._history_capable:
+            print(
+                f"Telegram 同步服务已启动，当前模式: {self._session_mode}，"
+                f"历史回填新增 {history_added} 条记录。"
+            )
+        else:
+            print(
+                f"Telegram 同步服务已启动，当前模式: {self._session_mode}。"
+                "Bot 会话无法读取历史消息，已跳过历史回填与主动对账。"
+            )
         return True
 
     async def stop(self) -> None:
@@ -90,6 +102,93 @@ class TelegramSyncService:
 
         self.channel_entity = None
         self._started = False
+        self._history_capable = False
+        self._session_mode = "disabled"
+
+    async def _create_client(self) -> Any:
+        """优先使用用户会话，失败后再回退到 Bot 会话。"""
+        user_client = await self._create_user_client()
+        if user_client:
+            return user_client
+
+        if not self.settings.BOT_TOKEN:
+            print("Telegram 同步服务未启用: 缺少 BOT_TOKEN，且未找到可用的用户 MTProto 会话。")
+            return None
+
+        bot_session_name = f"{self.settings.TELEGRAM_SYNC_SESSION}-bot"
+        bot_client = TelegramClient(
+            bot_session_name,
+            self.settings.TG_API_ID,
+            self.settings.TG_API_HASH
+        )
+        await bot_client.start(bot_token=self.settings.BOT_TOKEN)
+        self._history_capable = False
+        self._session_mode = "bot_token"
+        print("Telegram 同步服务已回退到 Bot 会话。")
+        return bot_client
+
+    async def _create_user_client(self) -> Any:
+        """
+        创建并验证用户会话。
+
+        只有用户会话才能读取频道历史消息并执行启动时回填。
+        """
+        session_string = self.settings.TELEGRAM_SYNC_SESSION_STRING
+        if session_string:
+            if not StringSession:
+                print("Telegram 用户会话未启用: 当前 telethon 版本缺少 StringSession。")
+                return None
+
+            client = TelegramClient(
+                StringSession(session_string),
+                self.settings.TG_API_ID,
+                self.settings.TG_API_HASH
+            )
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.disconnect()
+                print(
+                    "Telegram 用户会话未启用: "
+                    "TELEGRAM_SYNC_SESSION_STRING 无效或已过期。"
+                )
+                return None
+
+            me = await client.get_me()
+            if getattr(me, "bot", False):
+                await client.disconnect()
+                print(
+                    "Telegram 用户会话未启用: "
+                    "TELEGRAM_SYNC_SESSION_STRING 对应的是 Bot 会话。"
+                )
+                return None
+
+            self._history_capable = True
+            self._session_mode = "user_session_string"
+            return client
+
+        client = TelegramClient(
+            self.settings.TELEGRAM_SYNC_SESSION,
+            self.settings.TG_API_ID,
+            self.settings.TG_API_HASH
+        )
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            print(
+                "Telegram 用户会话未启用: 未找到已授权的 MTProto 用户会话。"
+            )
+            return None
+
+        me = await client.get_me()
+        if getattr(me, "bot", False):
+            self._history_capable = False
+            self._session_mode = "bot_session_file"
+            print("Telegram 同步服务检测到本地会话是 Bot 会话。")
+            return client
+
+        self._history_capable = True
+        self._session_mode = "user_session_file"
+        return client
 
     async def reconcile_once(self) -> int:
         """主动对账数据库与频道主消息是否一致。"""

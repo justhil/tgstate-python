@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     TG_API_ID: Optional[int] = None
     TG_API_HASH: Optional[str] = None
     TELEGRAM_SYNC_SESSION: str = "tgstate-sync"
+    TELEGRAM_SYNC_SESSION_STRING: Optional[str] = None
     TELEGRAM_RECONCILE_INTERVAL: int = 60
 
 
