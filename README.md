@@ -46,7 +46,7 @@ docker run -d \
   -e PASS_WORD="supersecret" \
   -e BASE_URL="https://my-service.com" \
   -e PICGO_API_KEY="supersecret(可选不需要就删除这行)" \
-  mitu233/python-tgstate:latest
+  ghcr.io/justhil/tgstate-python:latest
 ```
 
 
