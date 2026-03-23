@@ -101,8 +101,8 @@ docker run -d \
 | `PICGO_API_KEY` | 用于 PicGo 上传接口的 API 密钥。                             | 否       | `None`                  |
 | `TG_API_ID`     | Telegram MTProto `api_id`，用于建立 MTProto 客户端。         | 否       | `None`                  |
 | `TG_API_HASH`   | Telegram MTProto `api_hash`，用于建立 MTProto 客户端。       | 否       | `None`                  |
-| `TELEGRAM_SYNC_SESSION` | 本地 MTProto 会话名称。                              | 否       | `tgstate-sync`          |
-| `TELEGRAM_SYNC_SESSION_STRING` | 用户 MTProto 会话字符串。                    | 否       | `None`                  |
+| `TELEGRAM_SYNC_SESSION` | Bot MTProto 会话名称。                               | 否       | `tgstate-sync`          |
+| `TELEGRAM_SYNC_SESSION_STRING` | 启动时历史回填用的用户会话字符串。          | 否       | `None`                  |
 | `TELEGRAM_RECONCILE_INTERVAL` | 群组删除对账周期，单位秒。                     | 否       | `60`                    |
 
 ## 注意密码相关
@@ -171,18 +171,20 @@ docker run -d \
 
 - `TG_API_ID`
 - `TG_API_HASH`
-- `TELEGRAM_SYNC_SESSION_STRING`，或预先准备好的 `TELEGRAM_SYNC_SESSION.session`
+- `TELEGRAM_SYNC_SESSION_STRING`
 
 `TG_API_ID` 和 `TG_API_HASH` 只是 Telegram 应用凭证，用于建立 MTProto 连接，本身不能代表一个已登录用户。
 
-如果只用 `bot_token` 登录，Telegram 会限制读取历史消息，因此：
+项目现在的同步流程是：
 
-- 可以接收部分实时事件
-- 不能执行启动时历史回填
-- 不能执行基于历史消息的主动对账
+1. 启动时如果配置了 `TELEGRAM_SYNC_SESSION_STRING`，先临时使用**用户会话**扫描历史并重建前端列表。
+2. 历史回填完成后，立即断开用户会话。
+3. 运行期切换回 **Bot 会话**，继续处理实时删除同步。
 
-要启用历史回填，必须额外提供一个**已授权的用户 MTProto 会话**，推荐使用 `TELEGRAM_SYNC_SESSION_STRING`。
+因此：
 
-未配置用户会话时，网页删除与 PicList 删除仍然可正常同步，但群组内历史文件不会自动重建到前端。
+- `TELEGRAM_SYNC_SESSION_STRING` 只负责启动时历史回填
+- 网页删除、PicList 删除不需要用户会话，仍然由 Bot 删除消息
+- 未配置 `TELEGRAM_SYNC_SESSION_STRING` 时，网页删除与 PicList 删除仍然可正常同步，但群组内历史文件不会自动重建到前端
 
 用 roocode 和 白嫖的心 制作。****

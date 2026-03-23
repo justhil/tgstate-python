@@ -32,7 +32,6 @@ class TelegramSyncService:
         self.channel_entity: Any = None
         self._reconcile_task: asyncio.Task | None = None
         self._started = False
-        self._history_capable = False
         self._session_mode = "disabled"
 
     @property
@@ -56,7 +55,9 @@ class TelegramSyncService:
                 print("Telegram 删除同步未启用: 缺少 TG_API_ID 或 TG_API_HASH。")
             return False
 
-        self.client = await self._create_client()
+        history_added = await self._bootstrap_history_once()
+
+        self.client = await self._create_runtime_client()
         if not self.client:
             return False
 
@@ -66,23 +67,16 @@ class TelegramSyncService:
             events.MessageDeleted(chats=self.channel_entity)
         )
 
-        history_added = 0
-        if self._history_capable:
-            history_added = await self.sync_history_once()
-            await self.reconcile_once()
-            if self.settings.TELEGRAM_RECONCILE_INTERVAL > 0:
-                self._reconcile_task = asyncio.create_task(self._reconcile_loop())
-
         self._started = True
-        if self._history_capable:
+        if self.settings.TELEGRAM_SYNC_SESSION_STRING:
             print(
-                f"Telegram 同步服务已启动，当前模式: {self._session_mode}，"
-                f"历史回填新增 {history_added} 条记录。"
+                f"Telegram 同步服务已启动，运行模式: {self._session_mode}，"
+                f"启动时历史回填新增 {history_added} 条记录。"
             )
         else:
             print(
-                f"Telegram 同步服务已启动，当前模式: {self._session_mode}。"
-                "Bot 会话无法读取历史消息，已跳过历史回填与主动对账。"
+                f"Telegram 同步服务已启动，运行模式: {self._session_mode}。"
+                "未配置 TELEGRAM_SYNC_SESSION_STRING，已跳过启动时历史回填。"
             )
         return True
 
@@ -102,17 +96,12 @@ class TelegramSyncService:
 
         self.channel_entity = None
         self._started = False
-        self._history_capable = False
         self._session_mode = "disabled"
 
-    async def _create_client(self) -> Any:
-        """优先使用用户会话，失败后再回退到 Bot 会话。"""
-        user_client = await self._create_user_client()
-        if user_client:
-            return user_client
-
+    async def _create_runtime_client(self) -> Any:
+        """创建常驻 Bot 会话，用于运行期事件监听。"""
         if not self.settings.BOT_TOKEN:
-            print("Telegram 同步服务未启用: 缺少 BOT_TOKEN，且未找到可用的用户 MTProto 会话。")
+            print("Telegram 同步服务未启用: 缺少 BOT_TOKEN。")
             return None
 
         bot_session_name = f"{self.settings.TELEGRAM_SYNC_SESSION}-bot"
@@ -122,73 +111,61 @@ class TelegramSyncService:
             self.settings.TG_API_HASH
         )
         await bot_client.start(bot_token=self.settings.BOT_TOKEN)
-        self._history_capable = False
         self._session_mode = "bot_token"
-        print("Telegram 同步服务已回退到 Bot 会话。")
+        print("Telegram 同步服务已切换到 Bot 会话。")
         return bot_client
 
-    async def _create_user_client(self) -> Any:
+    async def _bootstrap_history_once(self) -> int:
         """
-        创建并验证用户会话。
-
-        只有用户会话才能读取频道历史消息并执行启动时回填。
+        启动时使用用户会话执行一次历史回填，完成后立即断开。
         """
         session_string = self.settings.TELEGRAM_SYNC_SESSION_STRING
-        if session_string:
-            if not StringSession:
-                print("Telegram 用户会话未启用: 当前 telethon 版本缺少 StringSession。")
-                return None
+        if not session_string:
+            return 0
 
-            client = TelegramClient(
-                StringSession(session_string),
-                self.settings.TG_API_ID,
-                self.settings.TG_API_HASH
-            )
-            await client.connect()
-            if not await client.is_user_authorized():
-                await client.disconnect()
-                print(
-                    "Telegram 用户会话未启用: "
-                    "TELEGRAM_SYNC_SESSION_STRING 无效或已过期。"
-                )
-                return None
+        if not StringSession:
+            print("Telegram 启动回填未启用: 当前 telethon 版本缺少 StringSession。")
+            return 0
 
-            me = await client.get_me()
-            if getattr(me, "bot", False):
-                await client.disconnect()
-                print(
-                    "Telegram 用户会话未启用: "
-                    "TELEGRAM_SYNC_SESSION_STRING 对应的是 Bot 会话。"
-                )
-                return None
-
-            self._history_capable = True
-            self._session_mode = "user_session_string"
-            return client
-
-        client = TelegramClient(
-            self.settings.TELEGRAM_SYNC_SESSION,
+        bootstrap_client = TelegramClient(
+            StringSession(session_string),
             self.settings.TG_API_ID,
             self.settings.TG_API_HASH
         )
-        await client.connect()
-        if not await client.is_user_authorized():
-            await client.disconnect()
-            print(
-                "Telegram 用户会话未启用: 未找到已授权的 MTProto 用户会话。"
-            )
-            return None
 
-        me = await client.get_me()
-        if getattr(me, "bot", False):
-            self._history_capable = False
-            self._session_mode = "bot_session_file"
-            print("Telegram 同步服务检测到本地会话是 Bot 会话。")
-            return client
+        previous_client = self.client
+        previous_channel_entity = self.channel_entity
 
-        self._history_capable = True
-        self._session_mode = "user_session_file"
-        return client
+        try:
+            await bootstrap_client.connect()
+            if not await bootstrap_client.is_user_authorized():
+                print(
+                    "Telegram 启动回填未执行: "
+                    "TELEGRAM_SYNC_SESSION_STRING 无效或已过期。"
+                )
+                return 0
+
+            me = await bootstrap_client.get_me()
+            if getattr(me, "bot", False):
+                print(
+                    "Telegram 启动回填未执行: "
+                    "TELEGRAM_SYNC_SESSION_STRING 对应的是 Bot 会话。"
+                )
+                return 0
+
+            self.client = bootstrap_client
+            self.channel_entity = await bootstrap_client.get_entity(self.settings.CHANNEL_NAME)
+            history_added = await self.sync_history_once()
+            await self.reconcile_once()
+            print("Telegram 启动回填已完成，准备切换回 Bot 会话。")
+            return history_added
+        except Exception as exc:
+            print(f"Telegram 启动回填失败: {exc}")
+            return 0
+        finally:
+            self.client = previous_client
+            self.channel_entity = previous_channel_entity
+            await bootstrap_client.disconnect()
 
     async def reconcile_once(self) -> int:
         """主动对账数据库与频道主消息是否一致。"""
