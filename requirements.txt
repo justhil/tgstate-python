@@ -5,3 +5,4 @@ python-multipart
 jinja2
 pydantic-settings
 sse-starlette
+telethon

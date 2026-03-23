@@ -146,10 +146,25 @@ docker run -d \
 
    <img src="https://tgstate.justhil.uk/d/407:BQACAgEAAyEGAASW4jjnAAIBl2h3kujY6McRWgIztAAB2mabiph9YgACmAQAAipXwUcH3E_AI0NrhDYE/picgo.png" style="zoom:80%;" />
 
+### PicList 删除接口
 
+项目新增了 `/api/delete` 与 `/api/piclist/delete` 两个删除入口，支持从请求体里的 `file_id`、`url`、`imgUrl`、`path` 或 `fullResult` 解析待删除文件。
 
-### 目前缺点
+上传接口也会额外返回：
 
-1. 删除文件慢，群组内删除前端不会更新需要手动删除。
+- `file_id`
+- `delete_api`
+- `fullResult`
+
+如果你在 PicList 中通过脚本系统调用删除接口，请继续沿用上传时配置的 `x-api-key`。
+
+### 群组删除同步
+
+如果希望在 Telegram 群组内手动删除消息后，网页前端也自动同步，需要额外配置：
+
+- `TG_API_ID`
+- `TG_API_HASH`
+
+这两个配置用于启用 MTProto 对账服务。未配置时，网页删除与 PicList 删除仍然可正常同步，但群组内手动删除不会自动回写前端。
 
 用 roocode 和 白嫖的心 制作。****
