@@ -23,19 +23,19 @@ def _serialize_file_for_page(file_info: dict, settings: Settings) -> dict:
 async def main_page(request: Request, settings: Settings = Depends(get_settings)):
     """提供主页，展示文件上传区域和所有文件列表。"""
     files = [_serialize_file_for_page(file_info, settings) for file_info in database.get_all_files()]
-    return templates.TemplateResponse("index.html", {"request": request, "files": files})
+    return templates.TemplateResponse(request, "index.html", {"request": request, "files": files})
 
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     """提供设置页面，用于更改密码。"""
-    return templates.TemplateResponse("settings.html", {"request": request})
+    return templates.TemplateResponse(request, "settings.html", {"request": request})
 
 
 @router.get("/pwd", response_class=HTMLResponse)
 async def get_password_page(request: Request):
     """提供密码输入页面。"""
-    return templates.TemplateResponse("pwd.html", {"request": request})
+    return templates.TemplateResponse(request, "pwd.html", {"request": request})
 
 
 @router.post("/pwd")
@@ -59,7 +59,7 @@ async def image_hosting_page(request: Request, settings: Settings = Depends(get_
         for file_info in files
         if file_info["filename"].lower().endswith(image_extensions)
     ]
-    return templates.TemplateResponse("image_hosting.html", {"request": request, "images": images})
+    return templates.TemplateResponse(request, "image_hosting.html", {"request": request, "images": images})
 
 
 @router.get("/share/{file_id}", response_class=HTMLResponse)
@@ -68,6 +68,7 @@ async def share_page(request: Request, file_id: str, settings: Settings = Depend
     file_info = database.get_file_info(file_id)
     if not file_info:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {"request": request, "message": "File not found!"},
             status_code=404,
@@ -82,4 +83,4 @@ async def share_page(request: Request, file_id: str, settings: Settings = Depend
         "html_code": f'&lt;a href="{serialized_file["url"]}"&gt;Download {serialized_file["filename"]}&lt;/a&gt;',
         "markdown_code": f'[{serialized_file["filename"]}]({serialized_file["url"]})',
     }
-    return templates.TemplateResponse("download.html", {"request": request, "file": file_data})
+    return templates.TemplateResponse(request, "download.html", {"request": request, "file": file_data})
