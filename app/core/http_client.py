@@ -28,16 +28,24 @@ async def lifespan(app: FastAPI):
     http_client = httpx.AsyncClient(timeout=300.0, limits=limits)
     print("✔️ 共享的 HTTP 客户端已创建。")
 
+    bot_app = None
+    bot_initialized = False
     try:
         bot_app = create_bot_app()
         app.state.bot_app = bot_app
         await bot_app.initialize()
+        bot_initialized = True
         await bot_app.start()
         await bot_app.updater.start_polling(drop_pending_updates=True)
         print("✔️ 机器人已在后台启动。")
-    except ValueError as exc:
-        print(f"❌ 启动机器人失败: {exc}")
+    except Exception as exc:
+        print(f"❌ 启动机器人失败，Web 服务将继续运行: {exc}")
         app.state.bot_app = None
+        if bot_app and bot_initialized:
+            try:
+                await bot_app.shutdown()
+            except Exception as shutdown_exc:
+                print(f"❌ 清理机器人资源失败: {shutdown_exc}")
 
     telegram_sync_service = get_telegram_sync_service()
     app.state.telegram_sync_service = telegram_sync_service
