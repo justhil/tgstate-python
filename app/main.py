@@ -1,7 +1,9 @@
+import hmac
+
 from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
 
 # 导入我们的新生命周期管理器和路由
 from .core.http_client import lifespan
@@ -41,7 +43,7 @@ async def auth_middleware(request: Request, call_next):
     
     if not is_public and request_path in protected_paths:
         session_password = request.cookies.get("password")
-        if session_password != active_password:
+        if not session_password or not hmac.compare_digest(session_password, active_password):
             # 如果密码不匹配，重定向到密码输入页面
             return RedirectResponse(url="/pwd", status_code=307)
 

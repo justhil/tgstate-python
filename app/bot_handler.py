@@ -99,18 +99,20 @@ async def handle_get_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         telegram_service = get_telegram_service()
         download_url = await telegram_service.get_download_url(file_id)
         if download_url:
-            async with httpx.AsyncClient() as client:
-                try:
-                    resp = await client.get(download_url)
-                    resp.raise_for_status()
-                    content = resp.content
-                    if content.startswith(b'tgstate-blob\n'):
-                        lines = content.decode('utf-8').strip().split('\n')
-                        final_file_name = lines[1]
-                except httpx.RequestError as exc:
-                    print(f"下载清单文件时出错: {exc}")
-                    await update.message.reply_text("错误：无法获取清单文件内容。")
-                    return
+            from .core.http_client import get_http_client
+
+            client = get_http_client()
+            try:
+                resp = await client.get(download_url)
+                resp.raise_for_status()
+                content = resp.content
+                if content.startswith(b'tgstate-blob\n'):
+                    lines = content.decode('utf-8').strip().split('\n')
+                    final_file_name = lines[1]
+            except (httpx.HTTPError, UnicodeDecodeError, IndexError) as exc:
+                print(f"下载清单文件时出错: {exc}")
+                await update.message.reply_text("错误：无法获取清单文件内容。")
+                return
 
     file_path = build_file_path(final_file_id, final_file_name, settings.FILE_ROUTE)
     if settings.BASE_URL:

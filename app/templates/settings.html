@@ -9,8 +9,22 @@
 
     <div class="settings-card">
         <h2><i class="fas fa-key"></i> 设置访问密码</h2>
-        <p>在这里设置一个新的全局访问密码。如果留空，则密码保护将依赖于环境变量的设置。</p>
+        <p>在这里设置一个新的全局访问密码。</p>
+        {% if not password_configured %}
+        <p class="message error">当前未设置网页密码。请先通过环境变量 PASS_WORD 或 API 密钥完成首次设置。</p>
+        {% elif api_key_configured %}
+        <p>可以填写当前网页密码；通过 API 调用时也可以使用 x-api-key 请求头。</p>
+        {% endif %}
         <form id="password-form" class="settings-form">
+            {% if password_configured %}
+            <div class="form-group">
+                <label for="current-password">当前密码</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="current-password" name="current-password" placeholder="输入当前密码" required>
+                </div>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <label for="password">新密码</label>
                 <div class="input-wrapper">
@@ -18,7 +32,7 @@
                     <input type="password" id="password" name="password" placeholder="输入新密码" required>
                 </div>
             </div>
-            <button type="submit" class="btn-submit">
+            <button type="submit" class="btn-submit"{% if not password_configured %} disabled{% endif %}>
                 <i class="fas fa-save"></i> 保存密码
             </button>
         </form>
@@ -37,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     passwordForm.addEventListener('submit', async function(event) {
         event.preventDefault();
         
+        const currentPassword = document.getElementById('current-password')?.value || null;
         const password = document.getElementById('password').value;
         
         messageEl.textContent = '';
@@ -48,7 +63,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ password: password }),
+                body: JSON.stringify({
+                    current_password: currentPassword,
+                    password: password,
+                }),
             });
             
             const result = await response.json();

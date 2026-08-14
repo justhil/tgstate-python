@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, Form, Request
+import hmac
+import time
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.templating import Jinja2Templates
 
@@ -8,6 +11,27 @@ from .utils.file_paths import build_file_path
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 60
+_login_attempts: dict[str, list[float]] = {}
+
+
+def _check_login_rate_limit(client_host: str) -> None:
+    now = time.monotonic()
+    attempts = [
+        attempt
+        for attempt in _login_attempts.get(client_host, [])
+        if now - attempt < LOGIN_WINDOW_SECONDS
+    ]
+    attempts.append(now)
+    _login_attempts[client_host] = attempts
+    if len(attempts) >= MAX_LOGIN_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="登录尝试过于频繁，请稍后再试。")
+
+
+def _clear_login_attempts(client_host: str) -> None:
+    _login_attempts.pop(client_host, None)
 
 
 def _serialize_file_for_page(file_info: dict, settings: Settings) -> dict:
@@ -27,9 +51,17 @@ async def main_page(request: Request, settings: Settings = Depends(get_settings)
 
 
 @router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
+async def settings_page(request: Request, settings: Settings = Depends(get_settings)):
     """提供设置页面，用于更改密码。"""
-    return templates.TemplateResponse(request, "settings.html", {"request": request})
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "request": request,
+            "password_configured": bool(get_active_password()),
+            "api_key_configured": bool(settings.PICGO_API_KEY),
+        },
+    )
 
 
 @router.get("/pwd", response_class=HTMLResponse)
@@ -39,13 +71,23 @@ async def get_password_page(request: Request):
 
 
 @router.post("/pwd")
-async def submit_password(password: str = Form(...)):
+async def submit_password(request: Request, password: str = Form(...)):
     """处理密码提交，设置 Cookie 并重定向。"""
+    client_host = request.client.host if request.client else "unknown"
     active_password = get_active_password()
-    if password == active_password:
+    if active_password and hmac.compare_digest(password, active_password):
+        _clear_login_attempts(client_host)
         response = RedirectResponse(url="/", status_code=303)
-        response.set_cookie(key="password", value=password, httponly=True, samesite="Lax")
+        response.set_cookie(
+            key="password",
+            value=password,
+            httponly=True,
+            samesite="strict",
+            secure=request.url.scheme == "https",
+        )
         return response
+
+    _check_login_rate_limit(client_host)
     return RedirectResponse(url="/pwd?error=1", status_code=303)
 
 

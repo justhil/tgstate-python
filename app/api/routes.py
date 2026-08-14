@@ -1,7 +1,7 @@
 import asyncio
+import hmac
 import mimetypes
 import os
-import shutil
 import tempfile
 from typing import Any, List, Optional
 from urllib.parse import quote
@@ -38,61 +38,42 @@ router = APIRouter()
 
 class PasswordRequest(BaseModel):
     password: str
+    current_password: Optional[str] = None
 
 
 class BatchDeleteRequest(BaseModel):
     file_ids: List[str]
 
 
-def _is_web_request(request: Request) -> bool:
-    return "referer" in request.headers
+def _credentials_match(expected: str | None, submitted: str | None) -> bool:
+    return bool(expected and submitted and hmac.compare_digest(expected, submitted))
 
 
 def _ensure_request_authorized(
     request: Request,
     settings: Settings,
     submitted_key: str | None = None,
+    submitted_password: str | None = None,
 ) -> None:
     """统一处理网页端与 API 端的鉴权逻辑。"""
     picgo_api_key = settings.PICGO_API_KEY
     active_password = get_active_password()
-    is_web_request = _is_web_request(request)
-
-    auth_ok = False
-    error_detail = "验证失败"
+    session_password = request.cookies.get("password")
 
     if not active_password and not picgo_api_key:
-        auth_ok = True
-    elif picgo_api_key and not active_password:
-        if is_web_request:
-            auth_ok = True
-        elif picgo_api_key == submitted_key:
-            auth_ok = True
-        else:
-            error_detail = "无效的 API 密钥"
-    elif not picgo_api_key and active_password:
-        if is_web_request:
-            session_password = request.cookies.get("password")
-            if active_password == session_password:
-                auth_ok = True
-            else:
-                error_detail = "需要网页登录"
-        else:
-            auth_ok = True
-    elif active_password and picgo_api_key:
-        if is_web_request:
-            session_password = request.cookies.get("password")
-            if active_password == session_password:
-                auth_ok = True
-            else:
-                error_detail = "需要网页登录"
-        elif picgo_api_key == submitted_key:
-            auth_ok = True
-        else:
-            error_detail = "无效的 API 密钥"
+        return
 
-    if not auth_ok:
-        raise HTTPException(status_code=401, detail=error_detail)
+    if _credentials_match(active_password, session_password) or _credentials_match(
+        active_password,
+        submitted_password,
+    ):
+        return
+
+    if _credentials_match(picgo_api_key, submitted_key):
+        return
+
+    error_detail = "无效的 API 密钥" if picgo_api_key else "需要网页登录"
+    raise HTTPException(status_code=401, detail=error_detail)
 
 
 def _serialize_file(file_info: dict[str, Any], settings: Settings) -> dict[str, Any]:
@@ -231,11 +212,13 @@ async def upload_file(
 
     temp_file_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             temp_file_path = temp_file.name
-            shutil.copyfileobj(file.file, temp_file)
+            while chunk := await file.read(1024 * 1024):
+                temp_file.write(chunk)
 
-        file_id = await telegram_service.upload_file(temp_file_path, file.filename)
+        upload_filename = file.filename or "upload"
+        file_id = await telegram_service.upload_file(temp_file_path, upload_filename)
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
@@ -252,21 +235,21 @@ async def upload_file(
         })
     else:
         serialized_file = {
-            "path": build_file_path(file_id, file.filename, settings.FILE_ROUTE),
-            "url": f"{settings.BASE_URL.strip('/')}{build_file_path(file_id, file.filename, settings.FILE_ROUTE)}",
+            "path": build_file_path(file_id, upload_filename, settings.FILE_ROUTE),
+            "url": f"{settings.BASE_URL.strip('/')}{build_file_path(file_id, upload_filename, settings.FILE_ROUTE)}",
             "file_id": file_id,
-            "filename": file.filename,
+            "filename": upload_filename,
         }
 
     return {
         "path": serialized_file["path"],
         "url": serialized_file["url"],
         "file_id": file_id,
-        "filename": file.filename,
+        "filename": upload_filename,
         "delete_api": f"{settings.BASE_URL.strip('/')}/api/delete",
         "fullResult": {
             "file_id": file_id,
-            "filename": file.filename,
+            "filename": upload_filename,
             "path": serialized_file["path"],
             "url": serialized_file["url"],
             "delete_api": f"{settings.BASE_URL.strip('/')}/api/delete",
@@ -295,15 +278,21 @@ async def download_file(
         head_resp = await client.get(download_url, headers={"Range": "bytes=0-127"})
         head_resp.raise_for_status()
         first_bytes = head_resp.content
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=503, detail=f"无法连接到 Telegram 服务器: {exc}") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="无法从 Telegram 获取文件。") from exc
 
     if first_bytes.startswith(b'tgstate-blob\n'):
-        manifest_resp = await client.get(download_url)
-        manifest_resp.raise_for_status()
-        manifest_content = manifest_resp.content
+        try:
+            manifest_resp = await client.get(download_url)
+            manifest_resp.raise_for_status()
+            manifest_content = manifest_resp.content
+            lines = manifest_content.decode('utf-8').strip().split('\n')
+        except (httpx.HTTPError, UnicodeDecodeError) as exc:
+            raise HTTPException(status_code=503, detail="无法读取文件清单。") from exc
 
-        lines = manifest_content.decode('utf-8').strip().split('\n')
+        if len(lines) < 2:
+            raise HTTPException(status_code=502, detail="文件清单格式无效。")
+
         original_filename = lines[1]
         chunk_file_ids = lines[2:]
         filename_encoded = quote(str(original_filename), safe="")
@@ -417,19 +406,33 @@ async def delete_files_for_piclist(
 
 
 @router.post("/api/set-password")
-async def set_password(payload: PasswordRequest):
+async def set_password(
+    payload: PasswordRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    x_api_key: Optional[str] = Header(None),
+):
     """设置或更新应用程序密码。"""
+    _ensure_request_authorized(
+        request,
+        settings,
+        x_api_key,
+        payload.current_password,
+    )
+    password = payload.password.strip()
+    if not password:
+        raise HTTPException(status_code=400, detail="密码不能为空。")
+
     try:
         with open(".password", "w", encoding="utf-8") as file:
-            file.write(payload.password)
+            file.write(password)
 
-        get_settings.cache_clear()
         return JSONResponse(
             status_code=200,
             content={"status": "ok", "message": "密码已成功设置。"},
         )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"无法写入密码文件: {exc}") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="无法写入密码文件。") from exc
 
 
 @router.post("/api/batch_delete")
