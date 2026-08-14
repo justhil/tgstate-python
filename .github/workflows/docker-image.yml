@@ -40,7 +40,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log In to Docker Hub
+        id: dockerhub-login
         if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+        continue-on-error: true
         uses: docker/login-action@v4
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
@@ -59,7 +61,7 @@ jobs:
 
       - name: Generate Docker Hub Metadata
         id: meta-dockerhub
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+        if: ${{ steps.dockerhub-login.outcome == 'success' }}
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
