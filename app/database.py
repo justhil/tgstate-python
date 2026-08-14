@@ -32,8 +32,13 @@ def init_db():
                 );
                 """
             )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_files_upload_date_id
+                ON files(upload_date DESC, id DESC);
+                """
+            )
             conn.commit()
-            print("数据库已成功初始化。")
         finally:
             conn.close()
 
@@ -69,6 +74,65 @@ def add_file_metadata(
             inserted = cursor.rowcount > 0
             print(f"已添加或忽略文件元数据: {filename}")
             return inserted
+        finally:
+            conn.close()
+
+
+def get_files_page(
+    limit: int,
+    offset: int = 0,
+    *,
+    images_only: bool = False,
+) -> list[dict[str, Any]]:
+    """按上传时间倒序读取一页文件。"""
+    where_clause = ""
+    parameters: list[Any] = []
+    if images_only:
+        where_clause = (
+            "WHERE lower(filename) LIKE ? OR lower(filename) LIKE ? "
+            "OR lower(filename) LIKE ? OR lower(filename) LIKE ? "
+            "OR lower(filename) LIKE ? OR lower(filename) LIKE ?"
+        )
+        parameters.extend(("%.jpg", "%.jpeg", "%.png", "%.gif", "%.bmp", "%.webp"))
+
+    parameters.extend((limit, offset))
+    with _db_lock:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT filename, file_id, filesize, upload_date
+                FROM files
+                {where_clause}
+                ORDER BY upload_date DESC, id DESC
+                LIMIT ? OFFSET ?
+                """,
+                parameters,
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+
+def count_files(*, images_only: bool = False) -> int:
+    """返回文件总数，图床页面可只统计图片。"""
+    where_clause = ""
+    parameters: tuple[str, ...] = ()
+    if images_only:
+        where_clause = (
+            "WHERE lower(filename) LIKE ? OR lower(filename) LIKE ? "
+            "OR lower(filename) LIKE ? OR lower(filename) LIKE ? "
+            "OR lower(filename) LIKE ? OR lower(filename) LIKE ?"
+        )
+        parameters = ("%.jpg", "%.jpeg", "%.png", "%.gif", "%.bmp", "%.webp")
+
+    with _db_lock:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT COUNT(*) FROM files {where_clause}", parameters)
+            return int(cursor.fetchone()[0])
         finally:
             conn.close()
 

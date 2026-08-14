@@ -470,6 +470,32 @@ h1 {
     font-weight: 500;
 }
 
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-top: 24px;
+}
+
+.pagination-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.pagination-link.disabled {
+    pointer-events: none;
+    color: var(--text-light);
+    opacity: 0.55;
+}
+
 /* --- Batch Actions & Checkboxes --- */
 .batch-actions-container {
     display: flex;

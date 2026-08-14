@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
@@ -51,10 +53,11 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     composite_id = f"{message.message_id}:{file_obj.file_id}"
-    inserted = database.add_file_metadata(
+    inserted = await asyncio.to_thread(
+        database.add_file_metadata,
         filename=file_name,
         file_id=composite_id,
-        filesize=file_obj.file_size
+        filesize=file_obj.file_size,
     )
     if not inserted:
         return

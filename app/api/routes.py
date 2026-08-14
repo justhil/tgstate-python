@@ -145,7 +145,7 @@ async def _delete_file_and_sync(
     main_message_deleted = bool(delete_result.get("main_message_deleted"))
 
     if main_message_deleted or is_not_found_error:
-        was_deleted_from_db = database.delete_file_metadata(file_id)
+        was_deleted_from_db = await asyncio.to_thread(database.delete_file_metadata, file_id)
         if is_not_found_error:
             delete_result["db_status"] = "deleted_after_not_found"
             delete_result["status"] = "success"
@@ -226,7 +226,7 @@ async def upload_file(
     if not file_id:
         raise HTTPException(status_code=500, detail="文件上传失败。")
 
-    file_info = database.get_file_info(file_id)
+    file_info = await asyncio.to_thread(database.get_file_info, file_id)
     if file_info:
         serialized_file = _serialize_file(file_info, settings)
         await publish_file_update({
@@ -278,14 +278,20 @@ async def download_file(
         head_resp = await client.get(download_url, headers={"Range": "bytes=0-127"})
         head_resp.raise_for_status()
         first_bytes = head_resp.content
+        if first_bytes.startswith(b'tgstate-blob\n'):
+            if head_resp.status_code == 206:
+                manifest_resp = await client.get(download_url)
+                manifest_resp.raise_for_status()
+                manifest_content = manifest_resp.content
+            else:
+                manifest_content = first_bytes
+        else:
+            manifest_content = None
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail="无法从 Telegram 获取文件。") from exc
 
-    if first_bytes.startswith(b'tgstate-blob\n'):
+    if manifest_content is not None:
         try:
-            manifest_resp = await client.get(download_url)
-            manifest_resp.raise_for_status()
-            manifest_content = manifest_resp.content
             lines = manifest_content.decode('utf-8').strip().split('\n')
         except (httpx.HTTPError, UnicodeDecodeError) as exc:
             raise HTTPException(status_code=503, detail="无法读取文件清单。") from exc
@@ -316,6 +322,12 @@ async def download_file(
         "Content-Disposition": f"{disposition_type}; filename*=UTF-8''{filename_encoded}",
         "Content-Type": content_type,
     }
+
+    if manifest_content is None and len(first_bytes) > 128:
+        async def buffered_streamer():
+            yield first_bytes
+
+        return StreamingResponse(buffered_streamer(), headers=response_headers)
 
     async def single_file_streamer():
         async with client.stream("GET", download_url) as resp:
@@ -352,9 +364,24 @@ async def file_updates(request: Request):
 
 
 @router.get("/api/files")
-async def get_files_list(settings: Settings = Depends(get_settings)):
-    """从数据库获取文件列表。"""
-    return [_serialize_file(file_info, settings) for file_info in database.get_all_files()]
+async def get_files_list(
+    page: int = 1,
+    page_size: int = 50,
+    settings: Settings = Depends(get_settings),
+):
+    """分页读取数据库文件列表。"""
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    files, total = await asyncio.gather(
+        asyncio.to_thread(database.get_files_page, page_size, (page - 1) * page_size),
+        asyncio.to_thread(database.count_files),
+    )
+    return {
+        "items": [_serialize_file(file_info, settings) for file_info in files],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }
 
 
 @router.delete("/api/files/{file_id}")
@@ -467,15 +494,28 @@ async def stream_chunks(
     telegram_service: TelegramService,
     client: httpx.AsyncClient,
 ):
-    """使用共享客户端流式输出分块文件内容。"""
+    """流式输出分块文件，并预取下一个分块的临时 URL。"""
+    actual_chunk_ids: list[tuple[str, str]] = []
     for chunk_id in chunk_composite_ids:
         try:
             _, actual_chunk_id = chunk_id.split(':', 1)
+            actual_chunk_ids.append((chunk_id, actual_chunk_id))
         except (ValueError, IndexError):
             print(f"警告: 无效的分块 ID 格式 '{chunk_id}'，已跳过。")
-            continue
 
-        chunk_url = await telegram_service.get_download_url(actual_chunk_id)
+    if not actual_chunk_ids:
+        return
+
+    url_task = asyncio.create_task(
+        telegram_service.get_download_url(actual_chunk_ids[0][1])
+    )
+    for index, (chunk_id, actual_chunk_id) in enumerate(actual_chunk_ids):
+        chunk_url = await url_task
+        if index + 1 < len(actual_chunk_ids):
+            url_task = asyncio.create_task(
+                telegram_service.get_download_url(actual_chunk_ids[index + 1][1])
+            )
+
         if not chunk_url:
             print(f"警告: 无法为分块 {actual_chunk_id} 获取下载链接，已跳过。")
             continue

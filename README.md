@@ -108,7 +108,7 @@ docker run -d \
 | `TG_API_HASH`   | Telegram MTProto `api_hash`，用于建立 MTProto 客户端。       | 否       | `None`                  |
 | `TELEGRAM_SYNC_SESSION` | Bot MTProto 会话名称。                               | 否       | `tgstate-sync`          |
 | `TELEGRAM_SYNC_SESSION_STRING` | 启动时历史回填用的用户会话字符串。          | 否       | `None`                  |
-| `TELEGRAM_RECONCILE_INTERVAL` | 预留配置，当前版本未启用常驻删除对账。         | 否       | `60`                    |
+| `TELEGRAM_RECONCILE_INTERVAL` | MTProto 删除对账基础周期；文件超过 1,000/10,000 条时自动提高到至少 300/900 秒。 | 否 | `60` |
 
 ### Telegram 历史同步配置示例
 
@@ -127,7 +127,7 @@ TELEGRAM_RECONCILE_INTERVAL=60
 - `TG_API_ID` / `TG_API_HASH`：Telegram 应用凭证，用于建立 MTProto 连接。
 - `TELEGRAM_SYNC_SESSION`：Bot 运行期会话名称，用于存放 Bot 侧会话文件。
 - `TELEGRAM_SYNC_SESSION_STRING`：用户会话字符串，只在启动时用于扫描历史文件。
-- `TELEGRAM_RECONCILE_INTERVAL`：预留配置，当前版本未启用常驻删除对账。
+- `TELEGRAM_RECONCILE_INTERVAL`：删除对账的基础周期。文件量超过 1,000 条时至少每 5 分钟执行，超过 10,000 条时至少每 15 分钟执行，以降低 Telegram 请求和服务器占用。
 
 ## 注意密码相关
 

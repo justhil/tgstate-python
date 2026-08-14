@@ -81,6 +81,13 @@
                 </div>
             {% endif %}
         </div>
+        {% if total_pages > 1 %}
+        <nav class="pagination" aria-label="图片列表分页">
+            <a class="pagination-link{% if page <= 1 %} disabled{% endif %}" href="?page={{ page - 1 }}" aria-disabled="{{ 'true' if page <= 1 else 'false' }}">上一页</a>
+            <span>第 {{ page }} / {{ total_pages }} 页</span>
+            <a class="pagination-link{% if page >= total_pages %} disabled{% endif %}" href="?page={{ page + 1 }}" aria-disabled="{{ 'true' if page >= total_pages else 'false' }}">下一页</a>
+        </nav>
+        {% endif %}
     </div>
 </div>
 
@@ -90,5 +97,5 @@
    <div id="modal-caption"></div>
 </div>
 
-<script src="{{ url_for('static', path='/js/main.js') }}?v=2.4"></script>
+<script src="{{ url_for('static', path='/js/main.js') }}?v=2.5"></script>
 {% endblock %}

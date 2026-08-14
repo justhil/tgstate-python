@@ -68,6 +68,7 @@ class TelegramSyncService:
         )
 
         self._started = True
+        self._reconcile_task = asyncio.create_task(self._reconcile_loop())
         if self.settings.TELEGRAM_SYNC_SESSION_STRING:
             print(
                 f"Telegram 同步服务已启动，运行模式: {self._session_mode}，"
@@ -167,12 +168,23 @@ class TelegramSyncService:
             self.channel_entity = previous_channel_entity
             await bootstrap_client.disconnect()
 
+    async def _get_file_count(self) -> int:
+        return await asyncio.to_thread(database.count_files)
+
+    def _get_reconcile_interval(self, file_count: int) -> int:
+        base_interval = max(self.settings.TELEGRAM_RECONCILE_INTERVAL, 60)
+        if file_count >= 10_000:
+            return max(base_interval, 900)
+        if file_count >= 1_000:
+            return max(base_interval, 300)
+        return base_interval
+
     async def reconcile_once(self) -> int:
         """主动对账数据库与频道主消息是否一致。"""
         if not self.client or not self.channel_entity:
             return 0
 
-        files = database.get_all_files()
+        files = await asyncio.to_thread(database.get_all_files)
         message_ids: list[int] = []
         for file in files:
             try:
@@ -189,7 +201,10 @@ class TelegramSyncService:
 
             for message_id, message in zip(batch_ids, messages):
                 if message is None:
-                    deleted_file_id = database.delete_file_by_message_id(message_id)
+                    deleted_file_id = await asyncio.to_thread(
+                        database.delete_file_by_message_id,
+                        message_id,
+                    )
                     if deleted_file_id:
                         removed_file_ids.append(deleted_file_id)
 
@@ -214,7 +229,10 @@ class TelegramSyncService:
         if not self.client or not self.channel_entity:
             return 0
 
-        existing_file_ids = {file["file_id"] for file in database.get_all_files()}
+        existing_file_ids = {
+            file["file_id"]
+            for file in await asyncio.to_thread(database.get_all_files)
+        }
         chunk_message_ids: set[int] = set()
         inserted_count = 0
         known_streak = 0
@@ -237,7 +255,8 @@ class TelegramSyncService:
                 continue
 
             known_streak = 0
-            inserted = database.add_file_metadata(
+            inserted = await asyncio.to_thread(
+                database.add_file_metadata,
                 filename=history_record["filename"],
                 file_id=file_id,
                 filesize=history_record["filesize"],
@@ -426,7 +445,8 @@ class TelegramSyncService:
     async def _reconcile_loop(self) -> None:
         while True:
             try:
-                await asyncio.sleep(self.settings.TELEGRAM_RECONCILE_INTERVAL)
+                file_count = await self._get_file_count()
+                await asyncio.sleep(self._get_reconcile_interval(file_count))
                 await self.reconcile_once()
             except asyncio.CancelledError:
                 break
@@ -436,7 +456,10 @@ class TelegramSyncService:
     async def _handle_message_deleted(self, event: Any) -> None:
         deleted_ids = getattr(event, "deleted_ids", None) or getattr(event, "message_ids", None) or []
         for message_id in deleted_ids:
-            deleted_file_id = database.delete_file_by_message_id(int(message_id))
+            deleted_file_id = await asyncio.to_thread(
+                database.delete_file_by_message_id,
+                int(message_id),
+            )
             if deleted_file_id:
                 await publish_file_update(
                     {

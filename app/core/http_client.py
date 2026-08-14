@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
     print("✔️ 数据库已初始化。")
 
     global http_client
-    limits = httpx.Limits(max_connections=200, max_keepalive_connections=50)
+    limits = httpx.Limits(max_connections=50, max_keepalive_connections=20)
     http_client = httpx.AsyncClient(timeout=300.0, limits=limits)
     print("✔️ 共享的 HTTP 客户端已创建。")
 

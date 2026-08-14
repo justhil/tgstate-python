@@ -1,4 +1,6 @@
+import asyncio
 import hmac
+import math
 import time
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -14,7 +16,23 @@ templates = Jinja2Templates(directory="app/templates")
 
 MAX_LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 60
+PAGE_SIZE = 50
 _login_attempts: dict[str, list[float]] = {}
+
+
+async def _get_page(page: int, *, images_only: bool = False) -> tuple[list[dict], int]:
+    page = max(page, 1)
+    offset = (page - 1) * PAGE_SIZE
+    files, total = await asyncio.gather(
+        asyncio.to_thread(
+            database.get_files_page,
+            PAGE_SIZE,
+            offset,
+            images_only=images_only,
+        ),
+        asyncio.to_thread(database.count_files, images_only=images_only),
+    )
+    return files, max(1, math.ceil(total / PAGE_SIZE))
 
 
 def _check_login_rate_limit(client_host: str) -> None:
@@ -44,10 +62,24 @@ def _serialize_file_for_page(file_info: dict, settings: Settings) -> dict:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def main_page(request: Request, settings: Settings = Depends(get_settings)):
-    """提供主页，展示文件上传区域和所有文件列表。"""
-    files = [_serialize_file_for_page(file_info, settings) for file_info in database.get_all_files()]
-    return templates.TemplateResponse(request, "index.html", {"request": request, "files": files})
+async def main_page(
+    request: Request,
+    page: int = 1,
+    settings: Settings = Depends(get_settings),
+):
+    """提供主页，展示文件上传区域和分页文件列表。"""
+    files, total_pages = await _get_page(page)
+    serialized_files = [_serialize_file_for_page(file_info, settings) for file_info in files]
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "request": request,
+            "files": serialized_files,
+            "page": max(page, 1),
+            "total_pages": total_pages,
+        },
+    )
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -92,22 +124,30 @@ async def submit_password(request: Request, password: str = Form(...)):
 
 
 @router.get("/image_hosting", response_class=HTMLResponse)
-async def image_hosting_page(request: Request, settings: Settings = Depends(get_settings)):
-    """提供图床页面，并展示所有已上传图片。"""
-    files = [_serialize_file_for_page(file_info, settings) for file_info in database.get_all_files()]
-    image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')
-    images = [
-        file_info
-        for file_info in files
-        if file_info["filename"].lower().endswith(image_extensions)
-    ]
-    return templates.TemplateResponse(request, "image_hosting.html", {"request": request, "images": images})
+async def image_hosting_page(
+    request: Request,
+    page: int = 1,
+    settings: Settings = Depends(get_settings),
+):
+    """提供图床页面，并分页展示已上传图片。"""
+    files, total_pages = await _get_page(page, images_only=True)
+    images = [_serialize_file_for_page(file_info, settings) for file_info in files]
+    return templates.TemplateResponse(
+        request,
+        "image_hosting.html",
+        {
+            "request": request,
+            "images": images,
+            "page": max(page, 1),
+            "total_pages": total_pages,
+        },
+    )
 
 
 @router.get("/share/{file_id}", response_class=HTMLResponse)
 async def share_page(request: Request, file_id: str, settings: Settings = Depends(get_settings)):
     """提供文件分享页面，生成下载链接。"""
-    file_info = database.get_file_info(file_id)
+    file_info = await asyncio.to_thread(database.get_file_info, file_id)
     if not file_info:
         return templates.TemplateResponse(
             request,

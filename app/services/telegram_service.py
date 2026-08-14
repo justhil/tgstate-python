@@ -1,10 +1,9 @@
-import telegram
+import asyncio
 import os
-import io
 from functools import lru_cache
 from typing import BinaryIO
 import telegram
-from telegram import Update
+from telegram import InputFile, Update
 from telegram.ext import CallbackContext
 from telegram.request import HTTPXRequest
 from ..core.config import Settings, get_settings
@@ -14,6 +13,24 @@ from .. import database
 # 我们将分块大小设置为 19.5MB 以确保上传和下载都能成功。
 CHUNK_SIZE_BYTES = int(19.5 * 1024 * 1024)
 
+
+class ChunkReader:
+    """把一个文件句柄限制为单个分块，避免把分块复制进内存。"""
+
+    def __init__(self, file: BinaryIO, size: int, filename: str):
+        self.file = file
+        self.remaining = size
+        self.name = filename
+
+    def read(self, size: int = -1) -> bytes:
+        if self.remaining <= 0:
+            return b""
+        read_size = self.remaining if size < 0 else min(size, self.remaining)
+        data = self.file.read(read_size)
+        self.remaining -= len(data)
+        return data
+
+
 class TelegramService:
     """
     用于与 Telegram Bot API 交互的服务。
@@ -21,27 +38,14 @@ class TelegramService:
     def __init__(self, settings: Settings):
         # 为大文件上传设置更长的超时时间 (例如 5 分钟)
         request = HTTPXRequest(
+            connection_pool_size=8,
             connect_timeout=300.0,
             read_timeout=300.0,
-            write_timeout=300.0
+            write_timeout=300.0,
+            media_write_timeout=300.0,
         )
         self.bot = telegram.Bot(token=settings.BOT_TOKEN, request=request)
         self.channel_name = settings.CHANNEL_NAME
-
-    async def _upload_chunk(self, chunk_data: bytes, chunk_name: str) -> str | None:
-        """一个上传单个数据块的辅助函数。"""
-        try:
-            with io.BytesIO(chunk_data) as document_chunk:
-                message = await self.bot.send_document(
-                    chat_id=self.channel_name,
-                    document=document_chunk,
-                    filename=chunk_name
-                )
-            if message.document:
-                return message.document.file_id
-        except Exception as e:
-            print(f"上传分块 {chunk_name} 到 Telegram 时出错: {e}")
-        return None
 
     async def _upload_as_chunks(self, file_path: str, original_filename: str) -> str | None:
         """
@@ -49,34 +53,34 @@ class TelegramService:
         """
         chunk_file_ids = []
         first_message_id = None
-        
+        total_size = os.path.getsize(file_path)
+
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, 'rb') as file:
                 chunk_number = 1
-                while True:
-                    chunk = f.read(CHUNK_SIZE_BYTES)
-                    if not chunk:
-                        break
-                    
+                remaining = total_size
+                while remaining:
+                    chunk_size = min(CHUNK_SIZE_BYTES, remaining)
                     chunk_name = f"{original_filename}.part{chunk_number}"
                     print(f"正在上传分块: {chunk_name}")
-                    
-                    with io.BytesIO(chunk) as chunk_io:
-                        # 如果是第一个块，正常发送。否则，作为对第一个块的回复发送。
-                        reply_to_id = first_message_id if first_message_id else None
-                        message = await self.bot.send_document(
-                            chat_id=self.channel_name,
-                            document=chunk_io,
-                            filename=chunk_name,
-                            reply_to_message_id=reply_to_id
-                        )
-                    
-                    # 如果是第一个块，保存其 message_id
+                    chunk_reader = ChunkReader(file, chunk_size, chunk_name)
+                    document = InputFile(
+                        chunk_reader,
+                        filename=chunk_name,
+                        read_file_handle=False,
+                    )
+                    message = await self.bot.send_document(
+                        chat_id=self.channel_name,
+                        document=document,
+                        filename=chunk_name,
+                        reply_to_message_id=first_message_id,
+                    )
+
                     if not first_message_id:
                         first_message_id = message.message_id
-                    
-                    # 关键变更：存储复合ID (message_id:file_id) 而不是只有 file_id
+
                     chunk_file_ids.append(f"{message.message_id}:{message.document.file_id}")
+                    remaining -= chunk_size
                     chunk_number += 1
         except IOError as e:
             print(f"读取或上传文件块时出错: {e}")
@@ -85,29 +89,25 @@ class TelegramService:
             print(f"发送文件块时出错: {e}")
             return None
 
-        # 生成并上传清单文件，同样作为对第一个块的回复
         manifest_content = f"tgstate-blob\n{original_filename}\n" + "\n".join(chunk_file_ids)
         manifest_name = f"{original_filename}.manifest"
-        
+
         print("所有分块上传完毕。正在上传清单文件...")
         try:
-            with io.BytesIO(manifest_content.encode('utf-8')) as manifest_file:
-                message = await self.bot.send_document(
-                    chat_id=self.channel_name,
-                    document=manifest_file,
-                    filename=manifest_name,
-                    reply_to_message_id=first_message_id
-                )
+            message = await self.bot.send_document(
+                chat_id=self.channel_name,
+                document=manifest_content.encode('utf-8'),
+                filename=manifest_name,
+                reply_to_message_id=first_message_id
+            )
             if message.document:
                 print("清单文件上传成功。")
-                # 将大文件的元数据存入数据库
-                total_size = os.path.getsize(file_path)
-                # 创建复合ID，格式为 "message_id:file_id"
                 composite_id = f"{message.message_id}:{message.document.file_id}"
-                database.add_file_metadata(
+                await asyncio.to_thread(
+                    database.add_file_metadata,
                     filename=original_filename,
-                    file_id=composite_id, # 我们存储复合ID
-                    filesize=total_size
+                    file_id=composite_id,
+                    filesize=total_size,
                 )
                 return composite_id # 返回复合ID
         except Exception as e:
@@ -153,10 +153,11 @@ class TelegramService:
                 # 将小文件的元数据存入数据库
                 # 创建复合ID，格式为 "message_id:file_id"
                 composite_id = f"{message.message_id}:{message.document.file_id}"
-                database.add_file_metadata(
+                await asyncio.to_thread(
+                    database.add_file_metadata,
                     filename=file_name,
-                    file_id=composite_id, # 存储复合ID
-                    filesize=file_size
+                    file_id=composite_id,
+                    filesize=file_size,
                 )
                 return composite_id # 返回复合ID
         except Exception as e:
